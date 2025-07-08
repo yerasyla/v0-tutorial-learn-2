@@ -9,7 +9,7 @@ import { WalletStatus } from "@/components/optimized-wallet-status"
 import { SearchButton } from "@/components/search-button"
 import { cn } from "@/lib/utils"
 import { useWeb3 } from "@/contexts/web3-context"
-import { Home, BookOpen, LayoutDashboard, Plus } from "lucide-react"
+import { Home, BookOpen, LayoutDashboard, Plus } from 'lucide-react'
 
 export default function Navbar() {
   const pathname = usePathname()

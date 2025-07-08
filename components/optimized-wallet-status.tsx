@@ -163,3 +163,6 @@ export const WalletStatus = memo(() => {
 })
 
 WalletStatus.displayName = "WalletStatus"
+
+// Alias for backward-compatibility with older imports.
+export const OptimizedWalletStatus = WalletStatus
