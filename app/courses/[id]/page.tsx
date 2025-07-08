@@ -25,10 +25,12 @@ import {
   CaretUp,
   List,
   SquaresFour,
+  Info,
 } from "@phosphor-icons/react"
 
 const TUT_TOKEN_ADDRESS = "0xCAAE2A2F939F51d97CdFa9A86e79e3F085b799f3"
 const BNB_CHAIN_ID = "0x38" // BSC Mainnet
+const BNB_CHAIN_ID_DECIMAL = 56
 
 // Preset donation amounts
 const PRESET_AMOUNTS = [100, 500, 2000, 10000]
@@ -39,6 +41,41 @@ type CourseWithLessons = Course & {
 
 type CourseWithCreatorProfile = CourseWithLessons & {
   creator_profile?: UserProfile | null
+}
+
+// Helper function to convert token amount to wei safely
+const tokenToWei = (tokenAmount: string): bigint => {
+  // Remove any non-numeric characters except decimal point
+  const cleanAmount = tokenAmount.replace(/[^0-9.]/g, "")
+
+  // Split by decimal point
+  const [integerPart = "0", decimalPart = ""] = cleanAmount.split(".")
+
+  // Pad or truncate decimal part to 18 digits
+  const paddedDecimal = decimalPart.padEnd(18, "0").slice(0, 18)
+
+  // Combine and convert to BigInt
+  const weiString = integerPart + paddedDecimal
+
+  return BigInt(weiString)
+}
+
+// Helper function to convert wei to token amount safely
+const weiToToken = (weiAmount: bigint): string => {
+  const weiString = weiAmount.toString()
+  const paddedWei = weiString.padStart(19, "0") // Ensure at least 19 digits for proper decimal placement
+
+  const integerPart = paddedWei.slice(0, -18) || "0"
+  const decimalPart = paddedWei.slice(-18)
+
+  // Remove trailing zeros from decimal part
+  const trimmedDecimal = decimalPart.replace(/0+$/, "")
+
+  if (trimmedDecimal === "") {
+    return integerPart
+  }
+
+  return `${integerPart}.${trimmedDecimal}`
 }
 
 export default function CoursePage() {
@@ -55,6 +92,8 @@ export default function CoursePage() {
   const [showLessonList, setShowLessonList] = useState(false)
   const [showDonationForm, setShowDonationForm] = useState(false)
   const [lessonListView, setLessonListView] = useState<"list" | "grid">("list")
+  const [tutBalance, setTutBalance] = useState<string>("0")
+  const [isCheckingBalance, setIsCheckingBalance] = useState(false)
   const { account, isConnected, chainId } = useWeb3()
 
   // Detect mobile device and screen size
@@ -76,6 +115,15 @@ export default function CoursePage() {
       fetchDonations()
     }
   }, [courseId])
+
+  // Check TUT balance when account or chain changes
+  useEffect(() => {
+    if (account && isConnected && chainId === BNB_CHAIN_ID) {
+      checkTutBalance()
+    } else {
+      setTutBalance("0")
+    }
+  }, [account, isConnected, chainId])
 
   const fetchCourse = async () => {
     try {
@@ -164,6 +212,45 @@ export default function CoursePage() {
     return window.ethereum
   }
 
+  const checkTutBalance = async () => {
+    if (!account || !isConnected || chainId !== BNB_CHAIN_ID) {
+      setTutBalance("0")
+      return
+    }
+
+    setIsCheckingBalance(true)
+    try {
+      const provider = getWalletProvider()
+      if (!provider) {
+        throw new Error("No wallet provider found")
+      }
+
+      // ERC-20 balanceOf function signature: balanceOf(address)
+      const balanceOfData = `0x70a08231000000000000000000000000${account.slice(2).toLowerCase().padStart(40, "0")}`
+
+      const result = await provider.request({
+        method: "eth_call",
+        params: [
+          {
+            to: TUT_TOKEN_ADDRESS,
+            data: balanceOfData,
+          },
+          "latest",
+        ],
+      })
+
+      // Convert hex result to decimal and then to tokens (18 decimals)
+      const balanceWei = BigInt(result as string)
+      const balanceTokens = weiToToken(balanceWei)
+      setTutBalance(balanceTokens)
+    } catch (error) {
+      console.error("Error checking TUT balance:", error)
+      setTutBalance("0")
+    } finally {
+      setIsCheckingBalance(false)
+    }
+  }
+
   const switchToBNBChain = async () => {
     try {
       const provider = getWalletProvider()
@@ -197,7 +284,7 @@ export default function CoursePage() {
                     symbol: "BNB",
                     decimals: 18,
                   },
-                  rpcUrls: ["https://bsc-dataseed.binance.org/"],
+                  rpcUrls: ["https://bsc-dataseed1.binance.org/", "https://bsc-dataseed2.binance.org/"],
                   blockExplorerUrls: ["https://bscscan.com/"],
                 },
               ],
@@ -226,56 +313,103 @@ export default function CoursePage() {
     setSelectedPreset(null)
   }
 
-  const handleDonate = async () => {
+  const validateDonation = () => {
     if (!isConnected || !account || !course) {
-      toast({
-        title: "Wallet not connected",
-        description: "Please connect your wallet to donate",
-        variant: "destructive",
-      })
-      return
+      throw new Error("Wallet not connected")
+    }
+
+    if (chainId !== BNB_CHAIN_ID) {
+      throw new Error("Please switch to BNB Smart Chain")
     }
 
     if (!donationAmount || Number.parseFloat(donationAmount) <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid donation amount",
-        variant: "destructive",
-      })
-      return
+      throw new Error("Please enter a valid donation amount")
     }
 
+    const donationAmountNum = Number.parseFloat(donationAmount)
+    const balanceNum = Number.parseFloat(tutBalance)
+
+    if (donationAmountNum > balanceNum) {
+      throw new Error(`Insufficient TUT balance. You have ${tutBalance} TUT`)
+    }
+
+    if (!course.creator_wallet || course.creator_wallet.length !== 42) {
+      throw new Error("Invalid creator wallet address")
+    }
+
+    return donationAmountNum
+  }
+
+  const handleDonate = async () => {
     setIsDonating(true)
 
     try {
+      // Validate donation
+      const donationAmountNum = validateDonation()
+
       const provider = getWalletProvider()
       if (!provider) {
         throw new Error("No wallet provider found. Please install a Web3 wallet.")
       }
 
-      // Switch to BNB Chain
+      // Ensure we're on BNB Chain
       await switchToBNBChain()
 
-      // Wait a moment for chain switch to complete
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Wait for chain switch to complete
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
-      // Calculate amount in wei (TUT has 18 decimals)
-      const amountInTokens = Number.parseFloat(donationAmount)
-      const amountInWei = BigInt(Math.floor(amountInTokens * Math.pow(10, 18)))
+      // Verify we're on the correct chain after switch
+      const currentChainId = await provider.request({ method: "eth_chainId" })
+      if (currentChainId !== BNB_CHAIN_ID) {
+        throw new Error("Failed to switch to BNB Smart Chain")
+      }
 
-      // Convert to hex string
-      const amountHex = "0x" + amountInWei.toString(16).padStart(64, "0")
-      const recipientHex = course.creator_wallet.slice(2).toLowerCase().padStart(64, "0")
+      // Calculate amount in wei with proper precision using our helper function
+      const amountInWei = tokenToWei(donationAmount)
+
+      // Prepare transfer data - FIXED: Proper address encoding
+      const recipientAddress = course!.creator_wallet.toLowerCase()
+
+      // Validate recipient address format
+      if (!recipientAddress.startsWith("0x") || recipientAddress.length !== 42) {
+        throw new Error("Invalid recipient address format")
+      }
+
+      // Remove 0x prefix and ensure it's exactly 40 characters (20 bytes)
+      const recipientAddressClean = recipientAddress.slice(2).toLowerCase()
+      if (recipientAddressClean.length !== 40) {
+        throw new Error("Invalid recipient address length")
+      }
+
+      // Pad recipient address to 32 bytes (64 hex characters) for ABI encoding
+      const recipientHex = recipientAddressClean.padStart(64, "0")
+
+      // Convert amount to hex and pad to 32 bytes (64 hex characters)
+      const amountHex = amountInWei.toString(16).padStart(64, "0")
 
       // ERC-20 transfer function signature: transfer(address,uint256)
-      const transferData = `0xa9059cbb000000000000000000000000${recipientHex}${amountHex.slice(2)}`
+      // Function selector: 0xa9059cbb
+      const transferData = `0xa9059cbb${recipientHex}${amountHex}`
 
-      console.log("Donation details:", {
+      console.log("Donation transaction details:", {
+        from: account,
+        to: TUT_TOKEN_ADDRESS,
         amount: donationAmount,
         amountInWei: amountInWei.toString(),
-        recipient: course.creator_wallet,
+        recipient: recipientAddress,
+        recipientHex: recipientHex,
+        amountHex: amountHex,
         data: transferData,
       })
+
+      // Verify the encoded recipient address
+      const decodedRecipient = "0x" + recipientHex.slice(-40)
+      console.log("Decoded recipient address:", decodedRecipient)
+      console.log("Original recipient address:", recipientAddress)
+
+      if (decodedRecipient.toLowerCase() !== recipientAddress.toLowerCase()) {
+        throw new Error("Address encoding verification failed")
+      }
 
       // Send transaction
       const txHash = await provider.request({
@@ -285,15 +419,15 @@ export default function CoursePage() {
             from: account,
             to: TUT_TOKEN_ADDRESS,
             data: transferData,
-            gas: "0x15F90", // 90000 gas limit
+            // leave gas undefined – wallet will estimate
           },
         ],
       })
 
-      console.log("Transaction sent:", txHash)
+      console.log("Transaction sent successfully:", txHash)
 
       // Save donation to database
-      const { error } = await supabase.from("donations").insert([
+      const { error: dbError } = await supabase.from("donations").insert([
         {
           course_id: courseId,
           donor_wallet: account.toLowerCase(),
@@ -302,33 +436,45 @@ export default function CoursePage() {
         },
       ])
 
-      if (error) {
-        console.error("Database error:", error)
+      if (dbError) {
+        console.error("Database error:", dbError)
         // Don't throw here, transaction was successful
       }
 
       toast({
-        title: "Donation successful!",
-        description: `Thank you for donating ${donationAmount} TUT tokens!`,
+        title: "Donation successful! 🎉",
+        description: `Successfully donated ${donationAmount} TUT tokens to ${course!.creator_profile?.display_name || "creator"}`,
       })
 
+      // Reset form
       setDonationAmount("")
       setSelectedPreset(null)
       setShowDonationForm(false)
-      fetchDonations()
-    } catch (error: any) {
-      console.error("Error donating:", error)
 
-      let errorMessage = "Please try again later"
+      // Refresh data
+      fetchDonations()
+      checkTutBalance()
+    } catch (error: any) {
+      console.error("Donation error:", error)
+
+      let errorMessage = "Transaction failed. Please try again."
 
       if (error.code === 4001) {
         errorMessage = "Transaction was rejected by user"
       } else if (error.code === -32603) {
         errorMessage = "Internal wallet error. Please try again."
+      } else if (error.code === -32000) {
+        errorMessage = "Insufficient funds for gas fee"
       } else if (error.message?.includes("insufficient funds")) {
-        errorMessage = "Insufficient funds for transaction"
+        errorMessage = "Insufficient TUT tokens or BNB for gas"
+      } else if (error.message?.includes("execution reverted")) {
+        errorMessage = "Transaction failed. Check your TUT balance and try again."
       } else if (error.message?.includes("No wallet provider")) {
         errorMessage = "Please install a Web3 wallet like MetaMask"
+      } else if (error.message?.includes("switch to BNB")) {
+        errorMessage = "Please switch to BNB Smart Chain network"
+      } else if (error.message?.includes("Invalid recipient")) {
+        errorMessage = "Invalid creator wallet address"
       } else if (error.message) {
         errorMessage = error.message
       }
@@ -373,6 +519,7 @@ export default function CoursePage() {
 
   const totalDonations = donations.reduce((sum, donation) => sum + Number.parseFloat(donation.amount), 0)
   const isOnCorrectChain = chainId === BNB_CHAIN_ID
+  const hasInsufficientBalance = Number.parseFloat(donationAmount) > Number.parseFloat(tutBalance)
 
   if (isLoading) {
     return (
@@ -646,6 +793,28 @@ export default function CoursePage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 space-y-4">
+                  {/* TUT Balance Display */}
+                  {isConnected && isOnCorrectChain && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                          <Coins size={16} weight="fill" />
+                          <span className="text-xs font-medium">Your TUT Balance</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isCheckingBalance ? (
+                            <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full"></div>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={checkTutBalance} className="h-6 px-2 text-xs">
+                              Refresh
+                            </Button>
+                          )}
+                          <span className="text-sm font-bold text-blue-800 dark:text-blue-200">{tutBalance} TUT</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Network Status */}
                   {isConnected && !isOnCorrectChain && (
                     <div className="p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -681,6 +850,19 @@ export default function CoursePage() {
                     </div>
                   )}
 
+                  {/* Insufficient Balance Warning */}
+                  {hasInsufficientBalance && donationAmount && isConnected && isOnCorrectChain && (
+                    <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+                        <Warning size={16} />
+                        <span className="text-xs font-medium">Insufficient Balance</span>
+                      </div>
+                      <p className="text-xs text-red-600 dark:text-red-300 mt-1">
+                        You need {donationAmount} TUT but only have {tutBalance} TUT
+                      </p>
+                    </div>
+                  )}
+
                   {/* Preset Amounts - Mobile Grid */}
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-foreground">Quick Amounts (TUT)</Label>
@@ -692,7 +874,7 @@ export default function CoursePage() {
                           variant={selectedPreset === amount ? "default" : "outline"}
                           size="sm"
                           onClick={() => handlePresetSelect(amount)}
-                          disabled={!isConnected}
+                          disabled={!isConnected || !isOnCorrectChain}
                           className={`h-10 text-sm font-semibold ${
                             selectedPreset === amount
                               ? "bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
@@ -715,18 +897,30 @@ export default function CoursePage() {
                       type="number"
                       step="0.01"
                       min="0"
+                      max={tutBalance}
                       value={donationAmount}
                       onChange={(e) => handleCustomAmountChange(e.target.value)}
                       placeholder="Enter amount"
-                      disabled={!isConnected}
-                      className="h-10 text-sm border border-border focus:border-brand-primary bg-background"
+                      disabled={!isConnected || !isOnCorrectChain}
+                      className={`h-10 text-sm border focus:border-brand-primary bg-background ${
+                        hasInsufficientBalance && donationAmount
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border"
+                      }`}
                     />
                   </div>
 
                   <Button
                     onClick={handleDonate}
-                    className="w-full h-12 text-sm font-semibold bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
-                    disabled={!isConnected || isDonating || !donationAmount || Number.parseFloat(donationAmount) <= 0}
+                    className="w-full h-12 text-sm font-semibold bg-brand-primary hover:bg-brand-secondary text-primary-foreground disabled:opacity-50"
+                    disabled={
+                      !isConnected ||
+                      !isOnCorrectChain ||
+                      isDonating ||
+                      !donationAmount ||
+                      Number.parseFloat(donationAmount) <= 0 ||
+                      hasInsufficientBalance
+                    }
                   >
                     <Coins size={16} className="mr-2" weight="fill" />
                     {isDonating ? "Processing..." : "Donate TUT"}
@@ -735,6 +929,22 @@ export default function CoursePage() {
                   {!isConnected && (
                     <p className="text-xs text-muted-foreground text-center">Connect mobile wallet to donate</p>
                   )}
+
+                  {/* Transaction Info */}
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info size={14} className="text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-muted-foreground leading-relaxed">
+                        <p className="mb-1">
+                          <strong>Recipient:</strong> {course.creator_wallet.slice(0, 6)}...
+                          {course.creator_wallet.slice(-4)}
+                        </p>
+                        <p>
+                          <strong>Network:</strong> BNB Smart Chain (BSC)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -786,7 +996,7 @@ export default function CoursePage() {
             )}
           </div>
         ) : (
-          /* Desktop Layout - Unchanged */
+          /* Desktop Layout */
           <div className="grid lg:grid-cols-4 gap-6">
             {/* Main Content */}
             <div className="lg:col-span-3">
@@ -930,6 +1140,28 @@ export default function CoursePage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 space-y-4">
+                  {/* TUT Balance Display */}
+                  {isConnected && isOnCorrectChain && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                          <Coins size={14} weight="fill" />
+                          <span className="text-xs font-medium">Your Balance</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isCheckingBalance ? (
+                            <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full"></div>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={checkTutBalance} className="h-5 px-1 text-xs">
+                              ↻
+                            </Button>
+                          )}
+                          <span className="text-xs font-bold text-blue-800 dark:text-blue-200">{tutBalance} TUT</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Network Status */}
                   {isConnected && !isOnCorrectChain && (
                     <div className="p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -953,6 +1185,19 @@ export default function CoursePage() {
                     </div>
                   )}
 
+                  {/* Insufficient Balance Warning */}
+                  {hasInsufficientBalance && donationAmount && isConnected && isOnCorrectChain && (
+                    <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+                        <Warning size={16} />
+                        <span className="text-xs font-medium">Insufficient Balance</span>
+                      </div>
+                      <p className="text-xs text-red-600 dark:text-red-300 mt-1">
+                        Need {donationAmount} TUT, have {tutBalance} TUT
+                      </p>
+                    </div>
+                  )}
+
                   {/* Preset Amounts */}
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-foreground">Quick Amounts (TUT)</Label>
@@ -964,7 +1209,7 @@ export default function CoursePage() {
                           variant={selectedPreset === amount ? "default" : "outline"}
                           size="sm"
                           onClick={() => handlePresetSelect(amount)}
-                          disabled={!isConnected}
+                          disabled={!isConnected || !isOnCorrectChain}
                           className={`h-8 text-xs font-semibold ${
                             selectedPreset === amount
                               ? "bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
@@ -987,18 +1232,30 @@ export default function CoursePage() {
                       type="number"
                       step="0.01"
                       min="0"
+                      max={tutBalance}
                       value={donationAmount}
                       onChange={(e) => handleCustomAmountChange(e.target.value)}
                       placeholder="Enter amount"
-                      disabled={!isConnected}
-                      className="h-8 text-xs border border-border focus:border-brand-primary bg-background"
+                      disabled={!isConnected || !isOnCorrectChain}
+                      className={`h-8 text-xs focus:border-brand-primary bg-background ${
+                        hasInsufficientBalance && donationAmount
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border"
+                      }`}
                     />
                   </div>
 
                   <Button
                     onClick={handleDonate}
-                    className="w-full h-8 text-xs font-semibold bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
-                    disabled={!isConnected || isDonating || !donationAmount || Number.parseFloat(donationAmount) <= 0}
+                    className="w-full h-8 text-xs font-semibold bg-brand-primary hover:bg-brand-secondary text-primary-foreground disabled:opacity-50"
+                    disabled={
+                      !isConnected ||
+                      !isOnCorrectChain ||
+                      isDonating ||
+                      !donationAmount ||
+                      Number.parseFloat(donationAmount) <= 0 ||
+                      hasInsufficientBalance
+                    }
                   >
                     <Coins size={14} className="mr-2" weight="fill" />
                     {isDonating ? "Processing..." : "Donate TUT"}
@@ -1009,6 +1266,18 @@ export default function CoursePage() {
                       Connect wallet to donate
                     </p>
                   )}
+
+                  {/* Transaction Info */}
+                  <div className="p-2 bg-muted rounded text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1 mb-1">
+                      <Info size={12} />
+                      <span className="font-medium">Transaction Details</span>
+                    </div>
+                    <p>
+                      To: {course.creator_wallet.slice(0, 8)}...{course.creator_wallet.slice(-6)}
+                    </p>
+                    <p>Network: BNB Smart Chain</p>
+                  </div>
                 </CardContent>
               </Card>
 

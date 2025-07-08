@@ -184,10 +184,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
   // Connect wallet function with mobile support
   const connectWallet = useCallback(async () => {
-    if (isConnecting) {
-      console.log("Connection already in progress")
-      return
-    }
+    if (isConnecting) return
 
     setIsConnecting(true)
     setError(null)
@@ -197,10 +194,14 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
       if (!provider) {
         const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-        const errorMsg = isMobile
-          ? "No mobile wallet found. Please install MetaMask, Trust Wallet, or Coinbase Wallet."
-          : "No wallet provider found. Please install MetaMask or another Web3 wallet."
-        throw new Error(errorMsg)
+
+        if (isMobile) {
+          throw new Error(
+            "No mobile wallet found. Please install MetaMask, Trust Wallet, or Coinbase Wallet from your app store.",
+          )
+        } else {
+          throw new Error("No wallet found. Please install MetaMask or another Web3 wallet.")
+        }
       }
 
       // Request account access
@@ -238,17 +239,11 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
       if (provider.on) {
         provider.on("accountsChanged", handleAccountsChanged)
         provider.on("chainChanged", handleChainChanged)
-        provider.on("disconnect", () => {
-          setAccount(null)
-          setIsConnected(false)
-          setWalletType(null)
-          localStorage.removeItem("wallet-connection")
-        })
       }
 
       toast({
-        title: "Wallet Connected",
-        description: `Connected to ${detectedWalletType}`,
+        title: "Wallet Connected! 🎉",
+        description: `Connected to ${detectedWalletType}: ${connectedAccount.slice(0, 6)}...${connectedAccount.slice(-4)}`,
       })
 
       console.log("Wallet connected successfully:", {
@@ -302,17 +297,16 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     }
   }, [getWalletProvider, handleAccountsChanged, handleChainChanged])
 
-  // Check for existing connection on mount
+  // Auto-reconnect on page load
   useEffect(() => {
-    const checkExistingConnection = async () => {
+    const autoReconnect = async () => {
       try {
-        const storedConnection = localStorage.getItem("wallet-connection")
-        if (!storedConnection) return
+        const stored = localStorage.getItem("wallet-connection")
+        if (!stored) return
 
-        const connectionData = JSON.parse(storedConnection)
+        const connectionData = JSON.parse(stored)
+        const isRecentConnection = Date.now() - connectionData.timestamp < 24 * 60 * 60 * 1000 // 24 hours
 
-        // Check if connection is recent (within 24 hours)
-        const isRecentConnection = Date.now() - connectionData.timestamp < 24 * 60 * 60 * 1000
         if (!isRecentConnection) {
           localStorage.removeItem("wallet-connection")
           return
@@ -321,7 +315,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
         const provider = getWalletProvider()
         if (!provider) return
 
-        // Check if wallet is still connected
+        // Check if still connected
         const accounts = await provider.request({ method: "eth_accounts" })
         if (accounts && accounts.length > 0 && accounts[0] === connectionData.account) {
           const currentChainId = await provider.request({ method: "eth_chainId" })
@@ -337,7 +331,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
             provider.on("chainChanged", handleChainChanged)
           }
 
-          console.log("Restored wallet connection:", {
+          console.log("Auto-reconnected to wallet:", {
             account: accounts[0],
             chainId: currentChainId,
             walletType: connectionData.walletType,
@@ -347,12 +341,12 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem("wallet-connection")
         }
       } catch (error) {
-        console.error("Error checking existing connection:", error)
+        console.error("Auto-reconnect failed:", error)
         localStorage.removeItem("wallet-connection")
       }
     }
 
-    checkExistingConnection()
+    autoReconnect()
   }, [getWalletProvider, handleAccountsChanged, handleChainChanged])
 
   // Cleanup on unmount
@@ -382,7 +376,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>
 }
 
-export const useWeb3 = () => {
+export function useWeb3() {
   const context = useContext(Web3Context)
   if (context === undefined) {
     throw new Error("useWeb3 must be used within a Web3Provider")
@@ -390,9 +384,14 @@ export const useWeb3 = () => {
   return context
 }
 
-// Global type declarations
+// Extend Window interface for TypeScript
 declare global {
   interface Window {
-    ethereum?: WalletProvider
+    ethereum?: WalletProvider & {
+      isMetaMask?: boolean
+      isCoinbaseWallet?: boolean
+      isTrustWallet?: boolean
+      isTrust?: boolean
+    }
   }
 }
