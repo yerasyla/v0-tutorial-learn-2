@@ -26,6 +26,20 @@ export const metadata: Metadata = {
     title: "Tutorial Platform - Web3 Education",
     description: "Learn and teach Web3 with TUT token rewards",
     type: "website",
+    images: [
+      {
+        url: "/android-chrome-512x512.png",
+        width: 512,
+        height: 512,
+        alt: "Tutorial Platform Logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Tutorial Platform - Web3 Education",
+    description: "Learn and teach Web3 with TUT token rewards",
+    images: ["/android-chrome-512x512.png"],
   },
   icons: {
     icon: [
@@ -55,6 +69,9 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <link rel="manifest" href="/site.webmanifest" />
+        <meta name="theme-color" content="#ffa500" />
+        <meta name="msapplication-TileColor" content="#ffa500" />
+        <meta name="msapplication-TileImage" content="/android-chrome-192x192.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://img.youtube.com" />
