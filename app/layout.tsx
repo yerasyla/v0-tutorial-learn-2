@@ -43,6 +43,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
+      { url: "/favicon.ico", type: "image/x-icon" },
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
     ],
@@ -64,14 +65,34 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.className}>
       <head>
-        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+        {/* Primary favicon */}
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+
+        {/* Apple and mobile icons */}
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="mask-icon" href="/favicon.ico" color="#ffa500" />
+
+        {/* Android and PWA icons */}
+        <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png" />
+
+        {/* Web app manifest */}
         <link rel="manifest" href="/site.webmanifest" />
+
+        {/* Theme and tile colors */}
         <meta name="theme-color" content="#ffa500" />
         <meta name="msapplication-TileColor" content="#ffa500" />
         <meta name="msapplication-TileImage" content="/android-chrome-192x192.png" />
+        <meta name="msapplication-config" content="/browserconfig.xml" />
+
+        {/* Force favicon refresh */}
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+
+        {/* Preconnect for performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://img.youtube.com" />

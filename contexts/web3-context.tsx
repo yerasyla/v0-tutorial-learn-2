@@ -9,6 +9,7 @@ interface WalletProvider {
   isMetaMask?: boolean
   isCoinbaseWallet?: boolean
   isTrustWallet?: boolean
+  isTrust?: boolean
   request: (args: { method: string; params?: any[] }) => Promise<any>
   on?: (event: string, handler: (...args: any[]) => void) => void
   removeListener?: (event: string, handler: (...args: any[]) => void) => void
@@ -22,6 +23,7 @@ interface Web3ContextType {
   walletType: string | null
   connectWallet: () => Promise<void>
   disconnectWallet: () => void
+  switchNetwork: (chainId: string) => Promise<boolean>
   error: string | null
   clearError: () => void
 }
@@ -41,11 +43,23 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     setError(null)
   }, [])
 
-  // Get wallet provider
+  // Get wallet provider with mobile support
   const getWalletProvider = useCallback((): WalletProvider | null => {
     if (typeof window === "undefined") return null
 
     try {
+      // Check for mobile wallet apps first
+      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+
+      if (isMobile) {
+        // Trust Wallet
+        if (window.ethereum?.isTrust) return window.ethereum
+        // MetaMask Mobile
+        if (window.ethereum?.isMetaMask) return window.ethereum
+        // Coinbase Wallet
+        if (window.ethereum?.isCoinbaseWallet) return window.ethereum
+      }
+
       // Check for any available ethereum provider
       if (window.ethereum) {
         return window.ethereum
@@ -58,13 +72,45 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Detect wallet type
+  // Detect wallet type with mobile support
   const detectWalletType = useCallback((provider: WalletProvider): string => {
+    if (provider.isTrust || provider.isTrustWallet) return "Trust Wallet"
     if (provider.isMetaMask) return "MetaMask"
     if (provider.isCoinbaseWallet) return "Coinbase Wallet"
-    if (provider.isTrustWallet) return "Trust Wallet"
     return "Browser Wallet"
   }, [])
+
+  // Switch network function
+  const switchNetwork = useCallback(
+    async (targetChainId: string): Promise<boolean> => {
+      try {
+        const provider = getWalletProvider()
+        if (!provider) {
+          throw new Error("No wallet provider found")
+        }
+
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: targetChainId }],
+        })
+
+        return true
+      } catch (error: any) {
+        console.error("Network switch failed:", error)
+
+        if (error.code === 4902) {
+          // Chain not added to wallet - this should be handled by the calling code
+          throw new Error("Network not added to wallet")
+        } else if (error.code === 4001) {
+          // User rejected
+          throw new Error("Network switch rejected by user")
+        }
+
+        throw error
+      }
+    },
+    [getWalletProvider],
+  )
 
   // Handle account changes
   const handleAccountsChanged = useCallback(
@@ -136,7 +182,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
-  // Connect wallet function
+  // Connect wallet function with mobile support
   const connectWallet = useCallback(async () => {
     if (isConnecting) {
       console.log("Connection already in progress")
@@ -150,7 +196,11 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
       const provider = getWalletProvider()
 
       if (!provider) {
-        throw new Error("No wallet provider found. Please install MetaMask or another Web3 wallet.")
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        const errorMsg = isMobile
+          ? "No mobile wallet found. Please install MetaMask, Trust Wallet, or Coinbase Wallet."
+          : "No wallet provider found. Please install MetaMask or another Web3 wallet."
+        throw new Error(errorMsg)
       }
 
       // Request account access
@@ -324,6 +374,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     walletType,
     connectWallet,
     disconnectWallet,
+    switchNetwork,
     error,
     clearError,
   }
