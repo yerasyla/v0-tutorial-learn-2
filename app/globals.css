@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme colors based on Figma design */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 38 92% 50%;
+    --radius: 0.75rem;
+
+    /* Tutorial brand colors */
+    --brand-primary: 38 92% 50%; /* #faa400 */
+    --brand-secondary: 39 96% 40%; /* #cb8b00 */
+    --brand-accent: 42 96% 89%; /* #ffcf65 */
+    --brand-light: 44 100% 94%; /* #fff9e6 */
+    --brand-dark: 33 94% 13%; /* #281a02 */
+  }
+
+  .dark {
+    /* Dark theme colors based on Figma design */
+    --background: 0 0% 6.3%; /* #101014 */
+    --foreground: 0 0% 98%;
+    --card: 0 0% 9.8%; /* #18181b */
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 6.3%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 6.3%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 27.5%; /* #71717a */
+    --input: 0 0% 14.9%;
+    --ring: 38 92% 50%;
+
+    /* Tutorial brand colors remain consistent */
+    --brand-primary: 38 92% 50%; /* #faa400 */
+    --brand-secondary: 39 96% 40%; /* #cb8b00 */
+    --brand-accent: 42 96% 89%; /* #ffcf65 */
+    --brand-light: 44 100% 94%; /* #fff9e6 */
+    --brand-dark: 33 94% 13%; /* #281a02 */
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    color: hsl(var(--foreground));
+    background: hsl(var(--background));
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Smooth transitions for theme changes */
+  * {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+}
+
+@layer utilities {
+  /* Brand color utilities */
+  .bg-brand-primary {
+    background-color: hsl(var(--brand-primary));
+  }
+  .text-brand-primary {
+    color: hsl(var(--brand-primary));
+  }
+  .border-brand-primary {
+    border-color: hsl(var(--brand-primary));
+  }
+  .hover\:bg-brand-secondary:hover {
+    background-color: hsl(var(--brand-secondary));
+  }
+}
