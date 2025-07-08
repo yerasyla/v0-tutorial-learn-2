@@ -13,27 +13,14 @@ import { VerifiedBadge } from "@/components/verified-badge"
 import { supabase, type Course, type Lesson, type Donation, type UserProfile } from "@/lib/supabase"
 import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
-import {
-  Heart,
-  Coins,
-  Play,
-  BookOpen,
-  User,
-  Warning,
-  CheckCircle,
-  CaretDown,
-  CaretUp,
-  List,
-  SquaresFour,
-  Info,
-} from "@phosphor-icons/react"
+import { Heart, Coins, Play, BookOpen, User, CaretDown, CaretUp, List, SquaresFour, Info } from "@phosphor-icons/react"
 
 const TUT_TOKEN_ADDRESS = "0xCAAE2A2F939F51d97CdFa9A86e79e3F085b799f3"
 const BNB_CHAIN_ID = "0x38" // BSC Mainnet
 const BNB_CHAIN_ID_DECIMAL = 56
 
 // Preset donation amounts
-const PRESET_AMOUNTS = [100, 500, 2000, 10000]
+const PRESET_AMOUNTS = [100, 1000, 10000]
 
 type CourseWithLessons = Course & {
   lessons: Lesson[]
@@ -793,80 +780,33 @@ export default function CoursePage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 space-y-4">
-                  {/* TUT Balance Display */}
-                  {isConnected && isOnCorrectChain && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                          <Coins size={16} weight="fill" />
-                          <span className="text-xs font-medium">Your TUT Balance</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isCheckingBalance ? (
-                            <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full"></div>
-                          ) : (
-                            <Button variant="ghost" size="sm" onClick={checkTutBalance} className="h-6 px-2 text-xs">
-                              Refresh
-                            </Button>
-                          )}
-                          <span className="text-sm font-bold text-blue-800 dark:text-blue-200">{tutBalance} TUT</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Network Status */}
-                  {isConnected && !isOnCorrectChain && (
-                    <div className="p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
-                        <Warning size={16} />
-                        <span className="text-xs font-medium">Switch to BNB Smart Chain</span>
-                      </div>
-                      <p className="text-xs text-orange-600 dark:text-orange-300 mt-1">
-                        Donations require BNB Smart Chain network
-                      </p>
-                    </div>
-                  )}
-
-                  {isConnected && isOnCorrectChain && (
-                    <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
-                        <CheckCircle size={16} weight="fill" />
-                        <span className="text-xs font-medium">Ready to donate</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mobile Wallet Info */}
-                  {!isConnected && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                        <Warning size={16} />
-                        <span className="text-xs font-medium">Mobile Wallet Required</span>
-                      </div>
-                      <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-                        Install MetaMask, Trust Wallet, or Coinbase Wallet
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Insufficient Balance Warning */}
-                  {hasInsufficientBalance && donationAmount && isConnected && isOnCorrectChain && (
-                    <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
-                        <Warning size={16} />
-                        <span className="text-xs font-medium">Insufficient Balance</span>
-                      </div>
-                      <p className="text-xs text-red-600 dark:text-red-300 mt-1">
-                        You need {donationAmount} TUT but only have {tutBalance} TUT
-                      </p>
-                    </div>
-                  )}
+                  {/* Custom Amount - Mobile Optimized */}
+                  <div className="space-y-2">
+                    <Label htmlFor="custom-amount" className="text-xs font-medium text-foreground">
+                      Custom Amount (TUT)
+                    </Label>
+                    <Input
+                      id="custom-amount"
+                      type="number"
+                      step="0.00001"
+                      min="0"
+                      max={tutBalance}
+                      value={donationAmount}
+                      onChange={(e) => handleCustomAmountChange(e.target.value)}
+                      placeholder="Enter amount"
+                      disabled={!isConnected || !isOnCorrectChain}
+                      className={`h-10 text-sm border focus:border-brand-primary bg-background ${
+                        hasInsufficientBalance && donationAmount
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border"
+                      }`}
+                    />
+                  </div>
 
                   {/* Preset Amounts - Mobile Grid */}
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-foreground">Quick Amounts (TUT)</Label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {PRESET_AMOUNTS.map((amount) => (
                         <Button
                           key={amount}
@@ -885,29 +825,12 @@ export default function CoursePage() {
                         </Button>
                       ))}
                     </div>
-                  </div>
-
-                  {/* Custom Amount - Mobile Optimized */}
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-amount" className="text-xs font-medium text-foreground">
-                      Custom Amount (TUT)
-                    </Label>
-                    <Input
-                      id="custom-amount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max={tutBalance}
-                      value={donationAmount}
-                      onChange={(e) => handleCustomAmountChange(e.target.value)}
-                      placeholder="Enter amount"
-                      disabled={!isConnected || !isOnCorrectChain}
-                      className={`h-10 text-sm border focus:border-brand-primary bg-background ${
-                        hasInsufficientBalance && donationAmount
-                          ? "border-red-500 focus:border-red-500"
-                          : "border-border"
-                      }`}
-                    />
+                    {/* Balance display below quick amounts */}
+                    {isConnected && isOnCorrectChain && (
+                      <p className="text-xs text-muted-foreground">
+                        Balance: {Number.parseFloat(tutBalance).toFixed(5)} TUT
+                      </p>
+                    )}
                   </div>
 
                   <Button
@@ -1140,68 +1063,33 @@ export default function CoursePage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0 space-y-4">
-                  {/* TUT Balance Display */}
-                  {isConnected && isOnCorrectChain && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                          <Coins size={14} weight="fill" />
-                          <span className="text-xs font-medium">Your Balance</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isCheckingBalance ? (
-                            <div className="animate-spin h-3 w-3 border border-blue-600 border-t-transparent rounded-full"></div>
-                          ) : (
-                            <Button variant="ghost" size="sm" onClick={checkTutBalance} className="h-5 px-1 text-xs">
-                              ↻
-                            </Button>
-                          )}
-                          <span className="text-xs font-bold text-blue-800 dark:text-blue-200">{tutBalance} TUT</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Network Status */}
-                  {isConnected && !isOnCorrectChain && (
-                    <div className="p-3 bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-orange-800 dark:text-orange-200">
-                        <Warning size={16} />
-                        <span className="text-xs font-medium">Switch to BNB Smart Chain</span>
-                      </div>
-                      <p className="text-xs text-orange-600 dark:text-orange-300 mt-1">
-                        Donations require BNB Smart Chain network
-                      </p>
-                    </div>
-                  )}
-
-                  {isConnected && isOnCorrectChain && (
-                    <div className="p-3 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
-                        <CheckCircle size={16} weight="fill" />
-                        <span className="text-xs font-medium">Ready to donate</span>
-                      </div>
-                      <p className="text-xs text-green-600 dark:text-green-300 mt-1">Connected to BNB Smart Chain</p>
-                    </div>
-                  )}
-
-                  {/* Insufficient Balance Warning */}
-                  {hasInsufficientBalance && donationAmount && isConnected && isOnCorrectChain && (
-                    <div className="p-3 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
-                        <Warning size={16} />
-                        <span className="text-xs font-medium">Insufficient Balance</span>
-                      </div>
-                      <p className="text-xs text-red-600 dark:text-red-300 mt-1">
-                        Need {donationAmount} TUT, have {tutBalance} TUT
-                      </p>
-                    </div>
-                  )}
+                  {/* Custom Amount */}
+                  <div className="space-y-2">
+                    <Label htmlFor="custom-amount" className="text-xs font-medium text-foreground">
+                      Custom Amount (TUT)
+                    </Label>
+                    <Input
+                      id="custom-amount"
+                      type="number"
+                      step="0.00001"
+                      min="0"
+                      max={tutBalance}
+                      value={donationAmount}
+                      onChange={(e) => handleCustomAmountChange(e.target.value)}
+                      placeholder="Enter amount"
+                      disabled={!isConnected || !isOnCorrectChain}
+                      className={`h-8 text-xs focus:border-brand-primary bg-background ${
+                        hasInsufficientBalance && donationAmount
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-border"
+                      }`}
+                    />
+                  </div>
 
                   {/* Preset Amounts */}
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-foreground">Quick Amounts (TUT)</Label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {PRESET_AMOUNTS.map((amount) => (
                         <Button
                           key={amount}
@@ -1220,29 +1108,12 @@ export default function CoursePage() {
                         </Button>
                       ))}
                     </div>
-                  </div>
-
-                  {/* Custom Amount */}
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-amount" className="text-xs font-medium text-foreground">
-                      Custom Amount (TUT)
-                    </Label>
-                    <Input
-                      id="custom-amount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max={tutBalance}
-                      value={donationAmount}
-                      onChange={(e) => handleCustomAmountChange(e.target.value)}
-                      placeholder="Enter amount"
-                      disabled={!isConnected || !isOnCorrectChain}
-                      className={`h-8 text-xs focus:border-brand-primary bg-background ${
-                        hasInsufficientBalance && donationAmount
-                          ? "border-red-500 focus:border-red-500"
-                          : "border-border"
-                      }`}
-                    />
+                    {/* Balance display below quick amounts */}
+                    {isConnected && isOnCorrectChain && (
+                      <p className="text-xs text-muted-foreground">
+                        Balance: {Number.parseFloat(tutBalance).toFixed(5)} TUT
+                      </p>
+                    )}
                   </div>
 
                   <Button
