@@ -21,10 +21,10 @@ import {
   User,
   Warning,
   CheckCircle,
-  ChevronDown,
-  ChevronUp,
+  CaretDown,
+  CaretUp,
   List,
-  Grid3X3,
+  SquaresFour,
 } from "@phosphor-icons/react"
 
 const TUT_TOKEN_ADDRESS = "0xCAAE2A2F939F51d97CdFa9A86e79e3F085b799f3"
@@ -511,11 +511,7 @@ export default function CoursePage() {
                 >
                   <List size={16} className="mr-2" />
                   Lessons ({course.lessons.length})
-                  {showLessonList ? (
-                    <ChevronUp size={16} className="ml-2" />
-                  ) : (
-                    <ChevronDown size={16} className="ml-2" />
-                  )}
+                  {showLessonList ? <CaretUp size={16} className="ml-2" /> : <CaretDown size={16} className="ml-2" />}
                 </Button>
               )}
 
@@ -527,11 +523,7 @@ export default function CoursePage() {
               >
                 <Heart size={16} className="mr-2 text-red-500" weight="fill" />
                 Support
-                {showDonationForm ? (
-                  <ChevronUp size={16} className="ml-2" />
-                ) : (
-                  <ChevronDown size={16} className="ml-2" />
-                )}
+                {showDonationForm ? <CaretUp size={16} className="ml-2" /> : <CaretDown size={16} className="ml-2" />}
               </Button>
             </div>
 
@@ -556,7 +548,7 @@ export default function CoursePage() {
                         onClick={() => setLessonListView("grid")}
                         className={lessonListView === "grid" ? "bg-accent" : ""}
                       >
-                        <Grid3X3 size={14} />
+                        <SquaresFour size={14} />
                       </Button>
                     </div>
                   </div>
