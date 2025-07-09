@@ -81,10 +81,20 @@ export function FeaturedCourses() {
     if (lessons.length === 0) return "/placeholder.svg?height=200&width=350"
 
     const firstLesson = lessons.sort((a, b) => a.order_index - b.order_index)[0]
-    const match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
-    const videoId = match ? match[1] : null
 
-    return videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "/placeholder.svg?height=200&width=350"
+    // Match regular YouTube videos
+    let match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
+    if (match) {
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    }
+
+    // Match YouTube Shorts
+    match = firstLesson.youtube_url.match(/youtube\.com\/shorts\/([^&\n?#]+)/)
+    if (match) {
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    }
+
+    return "/placeholder.svg?height=200&width=350"
   }
 
   const getCreatorDisplayName = (course: CourseWithCreatorProfile) => {

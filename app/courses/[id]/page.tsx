@@ -477,13 +477,37 @@ export default function CoursePage() {
   }
 
   const getYouTubeEmbedUrl = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
-    return match ? `https://www.youtube.com/embed/${match[1]}?rel=0&modestbranding=1` : null
+    // Match regular YouTube videos
+    let match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
+    if (match) {
+      return `https://www.youtube.com/embed/${match[1]}?rel=0&modestbranding=1`
+    }
+
+    // Match YouTube Shorts
+    match = url.match(/youtube\.com\/shorts\/([^&\n?#]+)/)
+    if (match) {
+      return `https://www.youtube.com/embed/${match[1]}?rel=0&modestbranding=1`
+    }
+
+    return null
   }
 
   const getYouTubeThumbnail = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
-    return match ? `https://img.youtube.com/vi/${match[1]}/maxresdefault.jpg` : "/placeholder.svg?height=180&width=320"
+    // Match regular YouTube videos
+    let match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
+    if (match) {
+      // Try maxresdefault first, fallback to hqdefault if not available
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    }
+
+    // Match YouTube Shorts
+    match = url.match(/youtube\.com\/shorts\/([^&\n?#]+)/)
+    if (match) {
+      // For Shorts, use hqdefault as maxresdefault often doesn't exist
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    }
+
+    return "/placeholder.svg?height=180&width=320"
   }
 
   const getCreatorDisplayName = () => {
