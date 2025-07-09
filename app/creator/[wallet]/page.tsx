@@ -79,11 +79,15 @@ export default function CreatorProfilePage() {
 
   const fetchProfile = async () => {
     try {
+      console.log("Fetching profile for wallet:", walletAddress.toLowerCase())
+
       const { data, error } = await supabase
         .from("user_profiles")
         .select("*")
         .eq("wallet_address", walletAddress.toLowerCase())
-        .single()
+        .maybeSingle()
+
+      console.log("Profile fetch result:", { data, error })
 
       if (error && error.code !== "PGRST116") {
         throw error
@@ -176,7 +180,10 @@ export default function CreatorProfilePage() {
   }
 
   const handleSaveProfile = async () => {
-    if (!isOwner) return
+    if (!isOwner) {
+      console.log("Not owner, cannot save")
+      return
+    }
 
     // Validate Twitter handle
     if (editForm.twitter_handle && !validateTwitterHandle(editForm.twitter_handle)) {
@@ -213,6 +220,8 @@ export default function CreatorProfilePage() {
         twitter_handle: cleanTwitterHandle.trim() || null,
       }
 
+      console.log("Saving profile data:", profileData)
+
       // If avatar was removed, delete the old one from storage
       if (profile?.avatar_url && !editForm.avatar_url && profile.avatar_url.includes("supabase")) {
         try {
@@ -225,21 +234,45 @@ export default function CreatorProfilePage() {
 
       if (profile?.id) {
         // Update existing profile
+        console.log("Updating existing profile with ID:", profile.id)
+
         const { data, error } = await supabase
           .from("user_profiles")
           .update(profileData)
           .eq("wallet_address", walletAddress.toLowerCase())
           .select()
-          .single()
+          .maybeSingle()
+
+        console.log("Update result:", { data, error })
 
         if (error) throw error
-        setProfile(data)
+
+        // If no data returned, fetch the updated profile
+        if (!data) {
+          console.log("No data returned from update, fetching profile...")
+          const { data: refetched, error: refetchErr } = await supabase
+            .from("user_profiles")
+            .select("*")
+            .eq("wallet_address", walletAddress.toLowerCase())
+            .maybeSingle()
+
+          console.log("Refetch result:", { refetched, refetchErr })
+
+          if (refetchErr) throw refetchErr
+          if (refetched) setProfile(refetched)
+        } else {
+          setProfile(data)
+        }
       } else {
         // Create new profile
-        const { data, error } = await supabase.from("user_profiles").insert([profileData]).select().single()
+        console.log("Creating new profile")
+
+        const { data, error } = await supabase.from("user_profiles").insert([profileData]).select().maybeSingle()
+
+        console.log("Insert result:", { data, error })
 
         if (error) throw error
-        setProfile(data)
+        if (data) setProfile(data)
       }
 
       setIsEditing(false)
@@ -251,7 +284,7 @@ export default function CreatorProfilePage() {
       console.error("Error saving profile:", error)
       toast({
         title: "Error saving profile",
-        description: "Failed to save your profile. Please try again.",
+        description: `Failed to save your profile: ${error.message}`,
         variant: "destructive",
       })
     } finally {

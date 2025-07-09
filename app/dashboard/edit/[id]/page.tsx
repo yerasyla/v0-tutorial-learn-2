@@ -56,16 +56,24 @@ export default function EditCoursePage() {
   const { account, isConnected } = useWeb3()
 
   useEffect(() => {
+    console.log("Edit page effect:", { courseId, isConnected, account })
     if (courseId && isConnected && account) {
       fetchCourse()
     }
   }, [courseId, isConnected, account])
 
   const fetchCourse = async () => {
-    if (!account) return
+    if (!account) {
+      console.log("No account available")
+      return
+    }
+
+    console.log("Fetching course:", { courseId, account })
 
     try {
       const result = await getCourseForEdit(courseId, account)
+
+      console.log("Course fetch result:", result)
 
       if (!result.success) {
         setAccessDenied(true)
@@ -105,6 +113,8 @@ export default function EditCoursePage() {
               },
             ],
       )
+
+      console.log("Course loaded successfully:", { title: data.title, lessonsCount: lessonForms.length })
     } catch (error) {
       console.error("Error fetching course:", error)
       setAccessDenied(true)
@@ -128,10 +138,12 @@ export default function EditCoursePage() {
       isNew: true,
     }
     setLessons([...lessons, newLesson])
+    console.log("Added new lesson:", newLesson.id)
   }
 
   const removeLesson = async (id: string) => {
     const lesson = lessons.find((l) => l.id === id)
+    console.log("Removing lesson:", { id, isNew: lesson?.isNew })
 
     if (!lesson?.isNew && account) {
       // Delete from database if it's an existing lesson
@@ -170,6 +182,7 @@ export default function EditCoursePage() {
       order_index: index,
     }))
     setLessons(reorderedLessons)
+    console.log("Lesson removed from state, remaining:", reorderedLessons.length)
   }
 
   const updateLesson = (id: string, field: keyof LessonForm, value: string | number) => {
@@ -194,7 +207,10 @@ export default function EditCoursePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    console.log("Starting course update submission")
+
     if (!isConnected || !account || !course) {
+      console.error("Authentication check failed:", { isConnected, account: !!account, course: !!course })
       toast({
         title: "Authentication error",
         description: "Please ensure your wallet is connected.",
@@ -204,6 +220,7 @@ export default function EditCoursePage() {
     }
 
     if (!title.trim()) {
+      console.error("Title validation failed")
       toast({
         title: "Title required",
         description: "Please enter a course title",
@@ -215,6 +232,7 @@ export default function EditCoursePage() {
     const validLessons = lessons.filter((lesson) => lesson.title.trim() && lesson.youtube_url.trim())
 
     if (validLessons.length === 0) {
+      console.error("Lesson validation failed")
       toast({
         title: "At least one lesson required",
         description: "Please add at least one lesson with title and YouTube URL",
@@ -222,6 +240,13 @@ export default function EditCoursePage() {
       })
       return
     }
+
+    console.log("Validation passed, starting update:", {
+      courseId,
+      account,
+      title: title.trim(),
+      validLessonsCount: validLessons.length,
+    })
 
     setIsSaving(true)
 
@@ -235,6 +260,8 @@ export default function EditCoursePage() {
         isNew: lesson.isNew,
       }))
 
+      console.log("Calling updateCourse with:", { courseId, account, lessonData })
+
       const result = await updateCourse(
         courseId,
         account,
@@ -245,6 +272,8 @@ export default function EditCoursePage() {
         lessonData,
       )
 
+      console.log("Update course result:", result)
+
       if (!result.success) {
         throw new Error(result.error || "Failed to update course")
       }
@@ -254,6 +283,7 @@ export default function EditCoursePage() {
         description: `Your course has been updated with ${result.validLessonsCount} lessons.`,
       })
 
+      console.log("Course update successful, redirecting to dashboard")
       router.push("/dashboard")
     } catch (error: any) {
       console.error("Error updating course:", error)
