@@ -12,11 +12,11 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-foreground mb-6 leading-tight">
-              Build the Future, Master <span className="text-brand-primary">Web3</span> and AI skills
+              Build the future of <span className="text-brand-primary">Web3</span> and AI 
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-4xl mx-auto leading-relaxed">
-              Learn from industry experts and build tomorrow's technology
+              Learn, Build, and Support creators
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
