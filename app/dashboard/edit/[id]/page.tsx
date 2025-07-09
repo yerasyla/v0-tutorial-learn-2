@@ -9,11 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { supabase, type Course, type Lesson } from "@/lib/supabase"
 import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
 import { AlertCircle, Plus, Trash2, GripVertical, Save, ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { updateCourse, getCourseForEdit, deleteLessonSecure, type LessonUpdateData } from "@/app/actions/course-actions"
 
 interface LessonForm {
   id: string
@@ -24,20 +24,35 @@ interface LessonForm {
   isNew?: boolean
 }
 
-type CourseWithLessons = Course & {
-  lessons: Lesson[]
+interface CourseData {
+  id: string
+  title: string
+  description: string | null
+  creator_wallet: string
+  created_at: string
+  updated_at: string
+  lessons: Array<{
+    id: string
+    title: string
+    description: string | null
+    youtube_url: string
+    order_index: number
+    created_at: string
+    updated_at: string
+  }>
 }
 
 export default function EditCoursePage() {
   const params = useParams()
   const router = useRouter()
   const courseId = params.id as string
-  const [course, setCourse] = useState<CourseWithLessons | null>(null)
+  const [course, setCourse] = useState<CourseData | null>(null)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [lessons, setLessons] = useState<LessonForm[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [accessDenied, setAccessDenied] = useState(false)
   const { account, isConnected } = useWeb3()
 
   useEffect(() => {
@@ -47,38 +62,28 @@ export default function EditCoursePage() {
   }, [courseId, isConnected, account])
 
   const fetchCourse = async () => {
+    if (!account) return
+
     try {
-      const { data, error } = await supabase
-        .from("courses")
-        .select(`
-          *,
-          lessons (*)
-        `)
-        .eq("id", courseId)
-        .single()
+      const result = await getCourseForEdit(courseId, account)
 
-      if (error) {
-        throw error
-      }
-
-      // Check if user is the creator
-      if (data.creator_wallet.toLowerCase() !== account?.toLowerCase()) {
+      if (!result.success) {
+        setAccessDenied(true)
         toast({
           title: "Access denied",
-          description: "You can only edit your own courses.",
+          description: result.error || "You can only edit your own courses.",
           variant: "destructive",
         })
-        router.push("/dashboard")
         return
       }
 
+      const data = result.course!
       setCourse(data)
       setTitle(data.title)
       setDescription(data.description || "")
 
-      // Sort lessons and convert to form format
-      const sortedLessons = data.lessons?.sort((a: Lesson, b: Lesson) => a.order_index - b.order_index) || []
-      const lessonForms: LessonForm[] = sortedLessons.map((lesson: Lesson) => ({
+      // Convert lessons to form format
+      const lessonForms: LessonForm[] = data.lessons.map((lesson) => ({
         id: lesson.id,
         title: lesson.title,
         description: lesson.description || "",
@@ -102,12 +107,12 @@ export default function EditCoursePage() {
       )
     } catch (error) {
       console.error("Error fetching course:", error)
+      setAccessDenied(true)
       toast({
         title: "Error loading course",
         description: "Failed to load course data. Please try again.",
         variant: "destructive",
       })
-      router.push("/dashboard")
     } finally {
       setIsLoading(false)
     }
@@ -128,13 +133,18 @@ export default function EditCoursePage() {
   const removeLesson = async (id: string) => {
     const lesson = lessons.find((l) => l.id === id)
 
-    if (!lesson?.isNew) {
+    if (!lesson?.isNew && account) {
       // Delete from database if it's an existing lesson
       try {
-        const { error } = await supabase.from("lessons").delete().eq("id", id)
+        const result = await deleteLessonSecure(id, account)
 
-        if (error) {
-          throw error
+        if (!result.success) {
+          toast({
+            title: "Error deleting lesson",
+            description: result.error || "Failed to delete the lesson. Please try again.",
+            variant: "destructive",
+          })
+          return
         }
 
         toast({
@@ -216,53 +226,32 @@ export default function EditCoursePage() {
     setIsSaving(true)
 
     try {
-      // Update course
-      const { error: courseError } = await supabase
-        .from("courses")
-        .update({
+      const lessonData: LessonUpdateData[] = validLessons.map((lesson, index) => ({
+        id: lesson.isNew ? undefined : lesson.id,
+        title: lesson.title,
+        description: lesson.description,
+        youtube_url: lesson.youtube_url,
+        order_index: index,
+        isNew: lesson.isNew,
+      }))
+
+      const result = await updateCourse(
+        courseId,
+        account,
+        {
           title: title.trim(),
-          description: description.trim() || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", courseId)
+          description: description.trim() || undefined,
+        },
+        lessonData,
+      )
 
-      if (courseError) {
-        throw new Error(`Failed to update course: ${courseError.message}`)
-      }
-
-      // Handle lessons
-      for (const [index, lesson] of validLessons.entries()) {
-        const lessonData = {
-          title: lesson.title.trim(),
-          description: lesson.description.trim() || null,
-          youtube_url: lesson.youtube_url.trim(),
-          order_index: index,
-          updated_at: new Date().toISOString(),
-        }
-
-        if (lesson.isNew) {
-          // Insert new lesson
-          const { error } = await supabase.from("lessons").insert({
-            ...lessonData,
-            course_id: courseId,
-          })
-
-          if (error) {
-            throw new Error(`Failed to create lesson: ${error.message}`)
-          }
-        } else {
-          // Update existing lesson
-          const { error } = await supabase.from("lessons").update(lessonData).eq("id", lesson.id)
-
-          if (error) {
-            throw new Error(`Failed to update lesson: ${error.message}`)
-          }
-        }
+      if (!result.success) {
+        throw new Error(result.error || "Failed to update course")
       }
 
       toast({
         title: "Course updated successfully!",
-        description: `Your course has been updated with ${validLessons.length} lessons.`,
+        description: `Your course has been updated with ${result.validLessonsCount} lessons.`,
       })
 
       router.push("/dashboard")
@@ -304,13 +293,21 @@ export default function EditCoursePage() {
     )
   }
 
-  if (!course) {
+  if (accessDenied || !course) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Alert>
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Course not found or you don't have permission to edit it.</AlertDescription>
+          <AlertDescription>Access denied. You can only edit your own courses.</AlertDescription>
         </Alert>
+        <div className="mt-4">
+          <Link href="/dashboard">
+            <Button variant="outline">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </Link>
+        </div>
       </div>
     )
   }

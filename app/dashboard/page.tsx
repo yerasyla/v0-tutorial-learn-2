@@ -10,6 +10,7 @@ import { supabase, type Course, type Lesson } from "@/lib/supabase"
 import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
 import { Plus, PencilSimple, Trash, Eye, BookOpen, WarningCircle, TrendUp, Play } from "@phosphor-icons/react"
+import { deleteCourseSecure } from "@/app/actions/course-actions"
 
 type CourseWithLessons = Course & {
   lessons: Lesson[]
@@ -37,7 +38,7 @@ export default function CreatorDashboard() {
     if (!account) return
 
     try {
-      // Fetch courses with lessons
+      // Fetch courses with lessons - with proper authorization
       const { data: coursesData, error: coursesError } = await supabase
         .from("courses")
         .select(`
@@ -115,11 +116,25 @@ export default function CreatorDashboard() {
       return
     }
 
-    try {
-      const { error } = await supabase.from("courses").delete().eq("id", courseId)
+    if (!account) {
+      toast({
+        title: "Authentication error",
+        description: "Please ensure your wallet is connected.",
+        variant: "destructive",
+      })
+      return
+    }
 
-      if (error) {
-        throw error
+    try {
+      const result = await deleteCourseSecure(courseId, account)
+
+      if (!result.success) {
+        toast({
+          title: "Error deleting course",
+          description: result.error || "Failed to delete the course. Please try again.",
+          variant: "destructive",
+        })
+        return
       }
 
       toast({
@@ -143,10 +158,20 @@ export default function CreatorDashboard() {
     if (lessons.length === 0) return "/placeholder.svg?height=160&width=280"
 
     const firstLesson = lessons[0]
-    const match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
-    const videoId = match ? match[1] : null
 
-    return videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "/placeholder.svg?height=160&width=280"
+    // Match regular YouTube videos
+    let match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
+    if (match) {
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    }
+
+    // Match YouTube Shorts
+    match = firstLesson.youtube_url.match(/youtube\.com\/shorts\/([^&\n?#]+)/)
+    if (match) {
+      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    }
+
+    return "/placeholder.svg?height=160&width=280"
   }
 
   if (!isConnected) {
