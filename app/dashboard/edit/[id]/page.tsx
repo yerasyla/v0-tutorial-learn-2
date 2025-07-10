@@ -1,153 +1,132 @@
 "use client"
 
-import type React from "react"
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { useWeb3 } from "@/contexts/web3-context"
+import { getCourseForEdit, updateCourse, deleteCourse, deleteLessonSecure } from "@/app/actions/course-actions"
 import { toast } from "@/hooks/use-toast"
-import { AlertCircle, Plus, Trash2, GripVertical, Save, ArrowLeft } from "lucide-react"
-import Link from "next/link"
-import { updateCourse, getCourseForEdit, deleteLessonSecure, type LessonUpdateData } from "@/app/actions/course-actions"
+import { FloppyDisk, Plus, Trash, ArrowLeft, Play, Warning } from "@phosphor-icons/react"
+import { GripVertical } from "lucide-react"
 
-interface LessonForm {
+interface Lesson {
+  id?: string
+  title: string
+  youtube_url: string
+  order_index: number
+  course_id?: string
+}
+
+interface Course {
   id: string
   title: string
   description: string
-  youtube_url: string
-  order_index: number
-  isNew?: boolean
-}
-
-interface CourseData {
-  id: string
-  title: string
-  description: string | null
   creator_wallet: string
-  created_at: string
-  updated_at: string
-  lessons: Array<{
-    id: string
-    title: string
-    description: string | null
-    youtube_url: string
-    order_index: number
-    created_at: string
-    updated_at: string
-  }>
+  lessons: Lesson[]
 }
 
 export default function EditCoursePage() {
   const params = useParams()
   const router = useRouter()
   const courseId = params.id as string
-  const [course, setCourse] = useState<CourseData | null>(null)
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [lessons, setLessons] = useState<LessonForm[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [accessDenied, setAccessDenied] = useState(false)
   const { account, isConnected } = useWeb3()
 
-  useEffect(() => {
-    console.log("Edit page effect:", { courseId, isConnected, account })
-    if (courseId && isConnected && account) {
-      fetchCourse()
-    }
-  }, [courseId, isConnected, account])
+  const [course, setCourse] = useState<Course | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const fetchCourse = async () => {
+  // Form state
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [lessons, setLessons] = useState<Lesson[]>([])
+
+  // Load course data
+  useEffect(() => {
+    if (courseId && account) {
+      loadCourse()
+    }
+  }, [courseId, account])
+
+  const loadCourse = async () => {
     if (!account) {
-      console.log("No account available")
+      toast({
+        title: "Wallet not connected",
+        description: "Please connect your wallet to edit courses.",
+        variant: "destructive",
+      })
       return
     }
 
-    console.log("Fetching course:", { courseId, account })
-
     try {
-      const data = await getCourseForEdit(courseId, account)
+      console.log("Loading course for edit:", { courseId, account })
 
-      console.log("Course fetch result:", data)
+      const courseData = await getCourseForEdit(courseId, account)
 
-      setCourse(data)
-      setTitle(data.title)
-      setDescription(data.description || "")
+      console.log("Course loaded:", courseData)
 
-      // Convert lessons to form format
-      const lessonForms: LessonForm[] = data.lessons.map((lesson) => ({
-        id: lesson.id,
-        title: lesson.title,
-        description: lesson.description || "",
-        youtube_url: lesson.youtube_url,
-        order_index: lesson.order_index,
-      }))
-
-      setLessons(
-        lessonForms.length > 0
-          ? lessonForms
-          : [
-              {
-                id: "new-1",
-                title: "",
-                description: "",
-                youtube_url: "",
-                order_index: 0,
-                isNew: true,
-              },
-            ],
-      )
-
-      console.log("Course loaded successfully:", { title: data.title, lessonsCount: lessonForms.length })
+      setCourse(courseData)
+      setTitle(courseData.title)
+      setDescription(courseData.description || "")
+      setLessons(courseData.lessons || [])
     } catch (error: any) {
-      console.error("Error fetching course:", error)
-      setAccessDenied(true)
+      console.error("Error loading course:", error)
       toast({
-        title: "Access denied",
-        description: error.message || "You can only edit your own courses.",
+        title: "Error loading course",
+        description: error.message || "Failed to load course data",
         variant: "destructive",
       })
+
+      // If unauthorized, redirect to dashboard
+      if (error.message?.includes("Unauthorized") || error.message?.includes("Access denied")) {
+        router.push("/dashboard")
+      }
     } finally {
       setIsLoading(false)
     }
   }
 
   const addLesson = () => {
-    const newLesson: LessonForm = {
-      id: `new-${Date.now()}`,
+    const newLesson: Lesson = {
       title: "",
-      description: "",
       youtube_url: "",
       order_index: lessons.length,
-      isNew: true,
     }
     setLessons([...lessons, newLesson])
-    console.log("Added new lesson:", newLesson.id)
   }
 
-  const removeLesson = async (id: string) => {
-    const lesson = lessons.find((l) => l.id === id)
-    console.log("Removing lesson:", { id, isNew: lesson?.isNew })
+  const updateLesson = (index: number, field: keyof Lesson, value: string | number) => {
+    const updatedLessons = lessons.map((lesson, i) => {
+      if (i === index) {
+        return { ...lesson, [field]: value }
+      }
+      return lesson
+    })
+    setLessons(updatedLessons)
+  }
 
-    if (!lesson?.isNew && account) {
-      // Delete from database if it's an existing lesson
+  const removeLesson = async (index: number) => {
+    const lesson = lessons[index]
+
+    // If lesson has an ID, delete it from database
+    if (lesson.id && account) {
       try {
-        await deleteLessonSecure(id, account)
-
+        await deleteLessonSecure(lesson.id, account)
         toast({
           title: "Lesson deleted",
-          description: "The lesson has been removed from your course.",
+          description: "The lesson has been removed from the course.",
         })
       } catch (error: any) {
         console.error("Error deleting lesson:", error)
         toast({
           title: "Error deleting lesson",
-          description: error.message || "Failed to delete the lesson. Please try again.",
+          description: error.message || "Failed to delete lesson",
           variant: "destructive",
         })
         return
@@ -155,113 +134,87 @@ export default function EditCoursePage() {
     }
 
     // Remove from local state
-    const updatedLessons = lessons.filter((lesson) => lesson.id !== id)
-    // Reorder remaining lessons
-    const reorderedLessons = updatedLessons.map((lesson, index) => ({
+    const updatedLessons = lessons.filter((_, i) => i !== index)
+    // Update order indices
+    const reorderedLessons = updatedLessons.map((lesson, i) => ({
       ...lesson,
-      order_index: index,
+      order_index: i,
     }))
     setLessons(reorderedLessons)
-    console.log("Lesson removed from state, remaining:", reorderedLessons.length)
   }
 
-  const updateLesson = (id: string, field: keyof LessonForm, value: string | number) => {
-    setLessons(lessons.map((lesson) => (lesson.id === id ? { ...lesson, [field]: value } : lesson)))
+  const moveLesson = (fromIndex: number, toIndex: number) => {
+    const updatedLessons = [...lessons]
+    const [movedLesson] = updatedLessons.splice(fromIndex, 1)
+    updatedLessons.splice(toIndex, 0, movedLesson)
+
+    // Update order indices
+    const reorderedLessons = updatedLessons.map((lesson, i) => ({
+      ...lesson,
+      order_index: i,
+    }))
+    setLessons(reorderedLessons)
   }
 
-  const moveLesson = (id: string, direction: "up" | "down") => {
-    const currentIndex = lessons.findIndex((lesson) => lesson.id === id)
-    if ((direction === "up" && currentIndex > 0) || (direction === "down" && currentIndex < lessons.length - 1)) {
-      const newLessons = [...lessons]
-      const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1
-      ;[newLessons[currentIndex], newLessons[targetIndex]] = [newLessons[targetIndex], newLessons[currentIndex]]
-
-      // Update order_index for both lessons
-      newLessons[currentIndex].order_index = currentIndex
-      newLessons[targetIndex].order_index = targetIndex
-
-      setLessons(newLessons)
-    }
+  const validateYouTubeUrl = (url: string): boolean => {
+    if (!url) return false
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+/
+    return youtubeRegex.test(url)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    console.log("Starting course update submission")
-
-    if (!isConnected || !account || !course) {
-      console.error("Authentication check failed:", { isConnected, account: !!account, course: !!course })
+  const handleSave = async () => {
+    if (!account) {
       toast({
-        title: "Authentication error",
-        description: "Please ensure your wallet is connected.",
+        title: "Wallet not connected",
+        description: "Please connect your wallet to save changes.",
         variant: "destructive",
       })
       return
     }
 
     if (!title.trim()) {
-      console.error("Title validation failed")
       toast({
         title: "Title required",
-        description: "Please enter a course title",
+        description: "Please enter a course title.",
         variant: "destructive",
       })
       return
     }
 
+    // Validate lessons
     const validLessons = lessons.filter((lesson) => lesson.title.trim() && lesson.youtube_url.trim())
+    const invalidLessons = lessons.filter(
+      (lesson) => lesson.title.trim() && lesson.youtube_url.trim() && !validateYouTubeUrl(lesson.youtube_url),
+    )
 
-    if (validLessons.length === 0) {
-      console.error("Lesson validation failed")
+    if (invalidLessons.length > 0) {
       toast({
-        title: "At least one lesson required",
-        description: "Please add at least one lesson with title and YouTube URL",
+        title: "Invalid YouTube URLs",
+        description: "Please check your YouTube URLs and make sure they're valid.",
         variant: "destructive",
       })
       return
     }
-
-    console.log("Validation passed, starting update:", {
-      courseId,
-      account,
-      title: title.trim(),
-      validLessonsCount: validLessons.length,
-    })
 
     setIsSaving(true)
 
     try {
-      const lessonData: LessonUpdateData[] = validLessons.map((lesson, index) => ({
-        id: lesson.isNew ? undefined : lesson.id,
-        title: lesson.title,
-        youtube_url: lesson.youtube_url,
-        order_index: index,
-      }))
+      console.log("Saving course:", { courseId, title, description, lessons: validLessons.length, account })
 
-      console.log("Calling updateCourse with:", { courseId, account, lessonData })
-
-      await updateCourse(
-        courseId,
-        {
-          title: title.trim(),
-          description: description.trim() || undefined,
-        },
-        lessonData,
-        account, // Pass the authenticated wallet address
-      )
+      await updateCourse(courseId, { title: title.trim(), description: description.trim() }, validLessons, account)
 
       toast({
         title: "Course updated successfully!",
-        description: `Your course has been updated with ${validLessons.length} lessons.`,
+        description: `Your course "${title}" has been saved.`,
       })
 
-      console.log("Course update successful, redirecting to dashboard")
-      router.push("/dashboard")
+      // Reload the course data to reflect changes
+      await loadCourse()
     } catch (error: any) {
-      console.error("Error updating course:", error)
+      console.error("Error saving course:", error)
       toast({
-        title: "Error updating course",
-        description: error.message || "Please try again later",
+        title: "Error saving course",
+        description: error.message || "Failed to save course changes",
         variant: "destructive",
       })
     } finally {
@@ -269,208 +222,292 @@ export default function EditCoursePage() {
     }
   }
 
+  const handleDelete = async () => {
+    if (!account || !course) return
+
+    setIsDeleting(true)
+
+    try {
+      console.log("Deleting course:", { courseId, account })
+
+      const result = await deleteCourse(courseId, account)
+
+      toast({
+        title: "Course deleted",
+        description: `"${result.title}" has been permanently deleted.`,
+      })
+
+      router.push("/dashboard")
+    } catch (error: any) {
+      console.error("Error deleting course:", error)
+      toast({
+        title: "Error deleting course",
+        description: error.message || "Failed to delete course",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
   if (!isConnected) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Please connect your wallet to edit courses.</AlertDescription>
-        </Alert>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="text-center py-8">
+            <Warning size={48} className="text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Wallet Required</h2>
+            <p className="text-muted-foreground mb-4">Please connect your wallet to edit courses.</p>
+            <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-8"></div>
-          <div className="space-y-6">
-            <div className="h-20 bg-gray-200 rounded"></div>
-            <div className="h-32 bg-gray-200 rounded"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
+      <div className="min-h-screen bg-background">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-muted rounded w-64 mb-6"></div>
+            <div className="space-y-6">
+              <div className="h-12 bg-muted rounded"></div>
+              <div className="h-24 bg-muted rounded"></div>
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-32 bg-muted rounded"></div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
     )
   }
 
-  if (accessDenied || !course) {
+  if (!course) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Access denied. You can only edit your own courses.</AlertDescription>
-        </Alert>
-        <div className="mt-4">
-          <Link href="/dashboard">
-            <Button variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Button>
-          </Link>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="text-center py-8">
+            <Warning size={48} className="text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Course Not Found</h2>
+            <p className="text-muted-foreground mb-4">
+              The course you're looking for doesn't exist or you don't have permission to edit it.
+            </p>
+            <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
-      <div className="flex items-center gap-4 mb-8">
-        <Link href="/dashboard">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+    <div className="min-h-screen bg-background pb-20">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft size={16} />
             Back to Dashboard
           </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold">Edit Course</h1>
-          <p className="text-gray-600">Make changes to your course and lessons</p>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold">Edit Course</h1>
+            <p className="text-muted-foreground">Make changes to your course content</p>
+          </div>
         </div>
-      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Course Details</CardTitle>
-          <CardDescription>Update your course information and manage lessons</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Course Details */}
-            <div className="space-y-6">
-              <div className="space-y-2">
+        <div className="space-y-8">
+          {/* Course Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Course Information</CardTitle>
+              <CardDescription>Update your course title and description</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
                 <Label htmlFor="title">Course Title</Label>
                 <Input
                   id="title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Enter course title"
-                  required
+                  className="mt-1"
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Course Description</Label>
+              <div>
+                <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe what students will learn in this course"
                   rows={4}
+                  className="mt-1"
                 />
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            {/* Lessons */}
-            <div className="space-y-6">
+          {/* Lessons */}
+          <Card>
+            <CardHeader>
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Lessons</h3>
-                <Button type="button" onClick={addLesson} variant="outline" size="sm">
-                  <Plus className="h-4 w-4 mr-2" />
+                <div>
+                  <CardTitle>Course Lessons</CardTitle>
+                  <CardDescription>Add and organize your course lessons</CardDescription>
+                </div>
+                <Button onClick={addLesson} size="sm" className="flex items-center gap-2">
+                  <Plus size={16} />
                   Add Lesson
                 </Button>
               </div>
-
-              <div className="space-y-4">
-                {lessons.map((lesson, index) => (
-                  <Card key={lesson.id} className="p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="flex flex-col items-center gap-2 mt-2">
-                        <GripVertical className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm text-gray-500">#{index + 1}</span>
-                        {lesson.isNew && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">New</span>
-                        )}
-                      </div>
-
-                      <div className="flex-1 space-y-4">
-                        <div className="grid md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor={`lesson-title-${lesson.id}`}>Lesson Title</Label>
-                            <Input
-                              id={`lesson-title-${lesson.id}`}
-                              value={lesson.title}
-                              onChange={(e) => updateLesson(lesson.id, "title", e.target.value)}
-                              placeholder="Enter lesson title"
-                              required
-                            />
+            </CardHeader>
+            <CardContent>
+              {lessons.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Play size={48} className="mx-auto mb-4 opacity-50" />
+                  <p>No lessons yet. Add your first lesson to get started.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {lessons.map((lesson, index) => (
+                    <Card key={index} className="border-2">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-4">
+                          <div className="flex flex-col items-center gap-2 pt-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {index + 1}
+                            </Badge>
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => moveLesson(index, Math.max(0, index - 1))}
+                                disabled={index === 0}
+                                className="h-6 w-6 p-0"
+                              >
+                                <GripVertical size={12} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => moveLesson(index, Math.min(lessons.length - 1, index + 1))}
+                                disabled={index === lessons.length - 1}
+                                className="h-6 w-6 p-0"
+                              >
+                                <GripVertical size={12} />
+                              </Button>
+                            </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor={`lesson-url-${lesson.id}`}>YouTube URL</Label>
-                            <Input
-                              id={`lesson-url-${lesson.id}`}
-                              type="url"
-                              value={lesson.youtube_url}
-                              onChange={(e) => updateLesson(lesson.id, "youtube_url", e.target.value)}
-                              placeholder="https://www.youtube.com/watch?v=..."
-                              required
-                            />
+                          <div className="flex-1 space-y-3">
+                            <div>
+                              <Label htmlFor={`lesson-title-${index}`}>Lesson Title</Label>
+                              <Input
+                                id={`lesson-title-${index}`}
+                                value={lesson.title}
+                                onChange={(e) => updateLesson(index, "title", e.target.value)}
+                                placeholder="Enter lesson title"
+                                className="mt-1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`lesson-url-${index}`}>YouTube URL</Label>
+                              <Input
+                                id={`lesson-url-${index}`}
+                                value={lesson.youtube_url}
+                                onChange={(e) => updateLesson(index, "youtube_url", e.target.value)}
+                                placeholder="https://www.youtube.com/watch?v=..."
+                                className="mt-1"
+                              />
+                              {lesson.youtube_url && !validateYouTubeUrl(lesson.youtube_url) && (
+                                <p className="text-sm text-destructive mt-1">Please enter a valid YouTube URL</p>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="space-y-2">
-                          <Label htmlFor={`lesson-description-${lesson.id}`}>Lesson Description (Optional)</Label>
-                          <Textarea
-                            id={`lesson-description-${lesson.id}`}
-                            value={lesson.description}
-                            onChange={(e) => updateLesson(lesson.id, "description", e.target.value)}
-                            placeholder="Describe what this lesson covers"
-                            rows={2}
-                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeLesson(index)}
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10 mt-6"
+                          >
+                            <Trash size={16} />
+                          </Button>
                         </div>
-                      </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => moveLesson(lesson.id, "up")}
-                          disabled={index === 0}
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => moveLesson(lesson.id, "down")}
-                          disabled={index === lessons.length - 1}
-                        >
-                          ↓
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => removeLesson(lesson.id)}
-                          disabled={lessons.length === 1}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
+          {/* Actions */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-between">
+            <Button
+              variant="destructive"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting}
+              className="flex items-center gap-2"
+            >
+              <Trash size={16} />
+              Delete Course
+            </Button>
 
             <div className="flex gap-4">
-              <Button type="submit" disabled={isSaving} className="flex-1">
-                <Save className="h-4 w-4 mr-2" />
-                {isSaving ? "Saving Changes..." : "Save Changes"}
+              <Button variant="outline" onClick={() => router.push("/dashboard")} disabled={isSaving}>
+                Cancel
               </Button>
-              <Link href="/dashboard">
-                <Button type="button" variant="outline">
-                  Cancel
-                </Button>
-              </Link>
+              <Button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2">
+                <FloppyDisk size={16} />
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <Warning size={20} />
+                  Delete Course
+                </CardTitle>
+                <CardDescription>
+                  This action cannot be undone. This will permanently delete your course and all its lessons.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-4 justify-end">
+                  <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash size={16} />
+                    {isDeleting ? "Deleting..." : "Delete Forever"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
