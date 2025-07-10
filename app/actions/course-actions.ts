@@ -1,299 +1,338 @@
 "use server"
 
-import { supabase } from "@/lib/supabase"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 import { revalidatePath } from "next/cache"
-
-export interface CourseUpdateData {
-  title: string
-  description?: string
-}
 
 export interface LessonUpdateData {
   id?: string
   title: string
-  description?: string
   youtube_url: string
   order_index: number
-  isNew?: boolean
+  course_id?: string
 }
 
-export async function updateCourse(
-  courseId: string,
-  creatorWallet: string,
-  courseData: CourseUpdateData,
-  lessons: LessonUpdateData[],
-) {
+export async function getCourseForEdit(courseId: string, walletAddress?: string) {
+  console.log("getCourseForEdit called with:", { courseId, walletAddress })
+
   try {
-    console.log("Starting course update:", { courseId, creatorWallet, courseData })
-
-    // First, verify the course exists and belongs to the creator
-    const { data: existingCourse, error: fetchError } = await supabase
-      .from("courses")
-      .select("id, creator_wallet")
-      .eq("id", courseId)
-      .single()
-
-    console.log("Existing course check:", { existingCourse, fetchError })
-
-    if (fetchError) {
-      console.error("Course fetch error:", fetchError)
-      return { success: false, error: "Course not found" }
-    }
-
-    // Critical security check - verify ownership
-    if (existingCourse.creator_wallet.toLowerCase() !== creatorWallet.toLowerCase()) {
-      console.error("Ownership mismatch:", {
-        existing: existingCourse.creator_wallet.toLowerCase(),
-        provided: creatorWallet.toLowerCase(),
-      })
-      return { success: false, error: "Unauthorized: You can only edit your own courses" }
-    }
-
-    // Update course
-    const { data: updatedCourse, error: courseError } = await supabase
-      .from("courses")
-      .update({
-        title: courseData.title.trim(),
-        description: courseData.description?.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", courseId)
-      .eq("creator_wallet", creatorWallet.toLowerCase()) // Double security check
-      .select()
-
-    console.log("Course update result:", { updatedCourse, courseError })
-
-    if (courseError) {
-      console.error("Course update error:", courseError)
-      return { success: false, error: `Failed to update course: ${courseError.message}` }
-    }
-
-    // Handle lessons
-    const validLessons = lessons.filter((lesson) => lesson.title.trim() && lesson.youtube_url.trim())
-    console.log("Processing lessons:", { total: lessons.length, valid: validLessons.length })
-
-    // First, get existing lessons to know which ones to delete
-    const { data: existingLessons, error: existingLessonsError } = await supabase
-      .from("lessons")
-      .select("id")
-      .eq("course_id", courseId)
-
-    console.log("Existing lessons:", { existingLessons, existingLessonsError })
-
-    if (existingLessonsError) {
-      console.error("Error fetching existing lessons:", existingLessonsError)
-      return { success: false, error: "Failed to fetch existing lessons" }
-    }
-
-    // Delete lessons that are no longer in the update
-    const updatedLessonIds = validLessons.filter((l) => !l.isNew).map((l) => l.id)
-    const lessonsToDelete = existingLessons?.filter((l) => !updatedLessonIds.includes(l.id)) || []
-
-    console.log("Lessons to delete:", lessonsToDelete)
-
-    for (const lessonToDelete of lessonsToDelete) {
-      const { error: deleteError } = await supabase
-        .from("lessons")
-        .delete()
-        .eq("id", lessonToDelete.id)
-        .eq("course_id", courseId)
-
-      if (deleteError) {
-        console.error("Error deleting lesson:", deleteError)
-        return { success: false, error: `Failed to delete lesson: ${deleteError.message}` }
-      }
-    }
-
-    // Process valid lessons
-    for (const [index, lesson] of validLessons.entries()) {
-      const lessonData = {
-        title: lesson.title.trim(),
-        description: lesson.description?.trim() || null,
-        youtube_url: lesson.youtube_url.trim(),
-        order_index: index,
-        updated_at: new Date().toISOString(),
-      }
-
-      console.log("Processing lesson:", { index, lesson: lessonData, isNew: lesson.isNew })
-
-      if (lesson.isNew) {
-        // Insert new lesson
-        const { data: newLesson, error } = await supabase
-          .from("lessons")
-          .insert({
-            ...lessonData,
-            course_id: courseId,
-          })
-          .select()
-
-        console.log("New lesson insert result:", { newLesson, error })
-
-        if (error) {
-          console.error("Error creating lesson:", error)
-          return { success: false, error: `Failed to create lesson: ${error.message}` }
-        }
-      } else {
-        // Update existing lesson - verify it belongs to the course
-        const { data: updatedLesson, error } = await supabase
-          .from("lessons")
-          .update(lessonData)
-          .eq("id", lesson.id)
-          .eq("course_id", courseId) // Security check
-          .select()
-
-        console.log("Lesson update result:", { updatedLesson, error })
-
-        if (error) {
-          console.error("Error updating lesson:", error)
-          return { success: false, error: `Failed to update lesson: ${error.message}` }
-        }
-      }
-    }
-
-    console.log("Course update completed successfully")
-
-    revalidatePath("/dashboard")
-    revalidatePath(`/courses/${courseId}`)
-
-    return { success: true, validLessonsCount: validLessons.length }
-  } catch (error: any) {
-    console.error("Error updating course:", error)
-    return { success: false, error: error.message || "An unexpected error occurred" }
-  }
-}
-
-export async function getCourseForEdit(courseId: string, creatorWallet: string) {
-  try {
-    console.log("Fetching course for edit:", { courseId, creatorWallet })
-
-    // Fetch course with authorization check
-    const { data, error } = await supabase
+    const { data: course, error } = await supabaseAdmin
       .from("courses")
       .select(`
         *,
         lessons (*)
       `)
       .eq("id", courseId)
-      .eq("creator_wallet", creatorWallet.toLowerCase()) // Security check in query
       .single()
 
-    console.log("Course fetch result:", { data, error })
+    console.log("Course fetch result:", { course, error })
 
     if (error) {
       console.error("Error fetching course:", error)
-      return { success: false, error: "Course not found or access denied" }
+      throw error
     }
 
-    // Sort lessons
-    const sortedLessons = data.lessons?.sort((a: any, b: any) => a.order_index - b.order_index) || []
+    if (!course) {
+      throw new Error("Course not found")
+    }
 
-    console.log("Course fetched successfully:", { courseId, lessonsCount: sortedLessons.length })
+    // Check if user owns this course
+    if (walletAddress && course.creator_wallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new Error("Unauthorized: You can only edit your own courses")
+    }
+
+    // Sort lessons by order_index
+    const sortedLessons = course.lessons?.sort((a: any, b: any) => a.order_index - b.order_index) || []
 
     return {
-      success: true,
-      course: {
-        ...data,
-        lessons: sortedLessons,
-      },
+      ...course,
+      lessons: sortedLessons,
     }
-  } catch (error: any) {
-    console.error("Error fetching course for edit:", error)
-    return { success: false, error: "Failed to load course data" }
+  } catch (error) {
+    console.error("Error in getCourseForEdit:", error)
+    throw error
   }
 }
 
-export async function deleteCourseSecure(courseId: string, creatorWallet: string) {
-  try {
-    console.log("Deleting course:", { courseId, creatorWallet })
+export async function updateCourse(
+  courseId: string,
+  courseData: { title: string; description?: string },
+  lessons: LessonUpdateData[],
+  walletAddress?: string,
+) {
+  console.log("updateCourse called with:", { courseId, courseData, lessons: lessons.length, walletAddress })
 
-    // Verify ownership before deletion
-    const { data: existingCourse, error: fetchError } = await supabase
+  if (!walletAddress) {
+    throw new Error("Wallet address is required for authentication")
+  }
+
+  try {
+    // First, verify the user owns this course
+    const { data: existingCourse, error: courseCheckError } = await supabaseAdmin
       .from("courses")
-      .select("id, creator_wallet")
+      .select("creator_wallet")
       .eq("id", courseId)
       .single()
 
-    console.log("Course ownership check:", { existingCourse, fetchError })
+    console.log("Course ownership check:", { existingCourse, courseCheckError })
 
-    if (fetchError) {
-      console.error("Course fetch error:", fetchError)
-      return { success: false, error: "Course not found" }
+    if (courseCheckError) {
+      throw new Error(`Failed to verify course ownership: ${courseCheckError.message}`)
     }
 
-    if (existingCourse.creator_wallet.toLowerCase() !== creatorWallet.toLowerCase()) {
-      console.error("Unauthorized deletion attempt")
-      return { success: false, error: "Unauthorized: You can only delete your own courses" }
+    if (!existingCourse || existingCourse.creator_wallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new Error("Unauthorized: You can only edit your own courses")
     }
 
-    // Delete course (lessons will be deleted via cascade)
-    const { error } = await supabase
+    // Update course details
+    const { error: courseUpdateError } = await supabaseAdmin
       .from("courses")
-      .delete()
+      .update({
+        title: courseData.title,
+        description: courseData.description || null,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", courseId)
-      .eq("creator_wallet", creatorWallet.toLowerCase()) // Double security check
 
-    console.log("Course deletion result:", { error })
+    console.log("Course update result:", { courseUpdateError })
 
-    if (error) {
-      console.error("Error deleting course:", error)
-      return { success: false, error: `Failed to delete course: ${error.message}` }
+    if (courseUpdateError) {
+      throw new Error(`Failed to update course: ${courseUpdateError.message}`)
     }
 
-    console.log("Course deleted successfully")
+    // Get existing lessons to determine what to update/delete
+    const { data: existingLessons, error: lessonsError } = await supabaseAdmin
+      .from("lessons")
+      .select("*")
+      .eq("course_id", courseId)
 
+    console.log("Existing lessons:", { existingLessons, lessonsError })
+
+    if (lessonsError) {
+      throw new Error(`Failed to fetch existing lessons: ${lessonsError.message}`)
+    }
+
+    const existingLessonIds = new Set(existingLessons?.map((l) => l.id) || [])
+    const updatedLessonIds = new Set(lessons.filter((l) => l.id).map((l) => l.id))
+
+    // Delete lessons that are no longer in the update
+    const lessonsToDelete = existingLessons?.filter((l) => !updatedLessonIds.has(l.id)) || []
+
+    if (lessonsToDelete.length > 0) {
+      console.log(
+        "Deleting lessons:",
+        lessonsToDelete.map((l) => l.id),
+      )
+
+      const { error: deleteError } = await supabaseAdmin
+        .from("lessons")
+        .delete()
+        .in(
+          "id",
+          lessonsToDelete.map((l) => l.id),
+        )
+
+      if (deleteError) {
+        console.error("Error deleting lessons:", deleteError)
+        throw new Error(`Failed to delete lessons: ${deleteError.message}`)
+      }
+    }
+
+    // Process each lesson (update existing or insert new)
+    for (const lesson of lessons) {
+      const lessonData = {
+        title: lesson.title,
+        youtube_url: lesson.youtube_url,
+        order_index: lesson.order_index,
+        course_id: courseId,
+      }
+
+      if (lesson.id && existingLessonIds.has(lesson.id)) {
+        // Update existing lesson
+        console.log("Updating lesson:", lesson.id)
+
+        const { error: updateError } = await supabaseAdmin.from("lessons").update(lessonData).eq("id", lesson.id)
+
+        if (updateError) {
+          console.error("Error updating lesson:", updateError)
+          throw new Error(`Failed to update lesson "${lesson.title}": ${updateError.message}`)
+        }
+      } else {
+        // Insert new lesson
+        console.log("Inserting new lesson:", lesson.title)
+
+        const { error: insertError } = await supabaseAdmin.from("lessons").insert([lessonData])
+
+        if (insertError) {
+          console.error("Error inserting lesson:", insertError)
+          throw new Error(`Failed to create lesson "${lesson.title}": ${insertError.message}`)
+        }
+      }
+    }
+
+    console.log("Course update completed successfully")
+
+    // Revalidate relevant paths
+    revalidatePath(`/courses/${courseId}`)
+    revalidatePath(`/dashboard/edit/${courseId}`)
     revalidatePath("/dashboard")
+    revalidatePath("/courses")
+
     return { success: true }
-  } catch (error: any) {
-    console.error("Error deleting course:", error)
-    return { success: false, error: error.message || "An unexpected error occurred" }
+  } catch (error) {
+    console.error("Error in updateCourse:", error)
+    throw error
   }
 }
 
-export async function deleteLessonSecure(lessonId: string, creatorWallet: string) {
-  try {
-    console.log("Deleting lesson:", { lessonId, creatorWallet })
+export async function deleteLessonSecure(lessonId: string, walletAddress?: string) {
+  console.log("deleteLessonSecure called with:", { lessonId, walletAddress })
 
-    // First verify the lesson belongs to a course owned by the creator
-    const { data: lessonData, error: fetchError } = await supabase
+  if (!walletAddress) {
+    throw new Error("Wallet address is required for authentication")
+  }
+
+  try {
+    // Fetch the lesson and the course creator
+    const { data: lesson, error: fetchError } = await supabaseAdmin
       .from("lessons")
-      .select(`
+      .select(
+        `
         id,
         course_id,
         courses!inner (
           creator_wallet
         )
-      `)
+      `,
+      )
       .eq("id", lessonId)
       .single()
 
-    console.log("Lesson ownership check:", { lessonData, fetchError })
+    console.log("Lesson ownership check:", { lesson, fetchError })
 
     if (fetchError) {
-      console.error("Lesson fetch error:", fetchError)
-      return { success: false, error: "Lesson not found" }
+      throw new Error(`Failed to fetch lesson: ${fetchError.message}`)
     }
 
-    // @ts-ignore - Supabase types can be tricky with joins
-    if (lessonData.courses.creator_wallet.toLowerCase() !== creatorWallet.toLowerCase()) {
-      console.error("Unauthorized lesson deletion attempt")
-      return { success: false, error: "Unauthorized: You can only delete lessons from your own courses" }
+    if (!lesson || lesson.courses.creator_wallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new Error("Unauthorized: You can only delete lessons from your own courses")
     }
 
     // Delete the lesson
-    const { error } = await supabase.from("lessons").delete().eq("id", lessonId)
+    const { error: deleteError } = await supabaseAdmin.from("lessons").delete().eq("id", lessonId)
 
-    console.log("Lesson deletion result:", { error })
+    console.log("Lesson deletion result:", { deleteError })
 
-    if (error) {
-      console.error("Error deleting lesson:", error)
-      return { success: false, error: `Failed to delete lesson: ${error.message}` }
+    if (deleteError) {
+      throw new Error(`Failed to delete lesson: ${deleteError.message}`)
     }
 
-    console.log("Lesson deleted successfully")
-
+    console.log("Lesson deleted successfully", lessonId)
     return { success: true }
-  } catch (error: any) {
-    console.error("Error deleting lesson:", error)
-    return { success: false, error: error.message || "An unexpected error occurred" }
+  } catch (error) {
+    console.error("Error in deleteLessonSecure:", error)
+    throw error
   }
 }
+
+export async function deleteCourse(courseId: string, walletAddress?: string) {
+  console.log("deleteCourse called with:", { courseId, walletAddress })
+
+  if (!walletAddress) {
+    throw new Error("Wallet address is required for authentication")
+  }
+
+  try {
+    // First, verify the user owns this course
+    const { data: existingCourse, error: courseCheckError } = await supabaseAdmin
+      .from("courses")
+      .select("creator_wallet, title")
+      .eq("id", courseId)
+      .single()
+
+    console.log("Course ownership check for deletion:", { existingCourse, courseCheckError })
+
+    if (courseCheckError) {
+      throw new Error(`Failed to verify course ownership: ${courseCheckError.message}`)
+    }
+
+    if (!existingCourse || existingCourse.creator_wallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new Error("Unauthorized: You can only delete your own courses")
+    }
+
+    // Delete all lessons first (due to foreign key constraint)
+    const { error: lessonsDeleteError } = await supabaseAdmin.from("lessons").delete().eq("course_id", courseId)
+
+    console.log("Lessons deletion result:", { lessonsDeleteError })
+
+    if (lessonsDeleteError) {
+      throw new Error(`Failed to delete course lessons: ${lessonsDeleteError.message}`)
+    }
+
+    // Delete the course
+    const { error: courseDeleteError } = await supabaseAdmin.from("courses").delete().eq("id", courseId)
+
+    console.log("Course deletion result:", { courseDeleteError })
+
+    if (courseDeleteError) {
+      throw new Error(`Failed to delete course: ${courseDeleteError.message}`)
+    }
+
+    console.log("Course deleted successfully:", existingCourse.title)
+
+    // Revalidate relevant paths
+    revalidatePath("/dashboard")
+    revalidatePath("/courses")
+
+    return { success: true, title: existingCourse.title }
+  } catch (error) {
+    console.error("Error in deleteCourse:", error)
+    throw error
+  }
+}
+
+export async function createCourse(formData: FormData, walletAddress?: string) {
+  console.log("createCourse called with wallet:", walletAddress)
+
+  if (!walletAddress) {
+    throw new Error("Wallet address is required for authentication")
+  }
+
+  try {
+    const title = formData.get("title") as string
+    const description = formData.get("description") as string
+
+    if (!title?.trim()) {
+      throw new Error("Course title is required")
+    }
+
+    const courseData = {
+      title: title.trim(),
+      description: description?.trim() || null,
+      creator_wallet: walletAddress.toLowerCase(),
+    }
+
+    console.log("Creating course with data:", courseData)
+
+    const { data: course, error } = await supabaseAdmin.from("courses").insert([courseData]).select().single()
+
+    console.log("Course creation result:", { course, error })
+
+    if (error) {
+      throw new Error(`Failed to create course: ${error.message}`)
+    }
+
+    console.log("Course created successfully:", course.id)
+
+    // Revalidate relevant paths
+    revalidatePath("/dashboard")
+    revalidatePath("/courses")
+
+    return { success: true, courseId: course.id }
+  } catch (error) {
+    console.error("Error in createCourse:", error)
+    throw error
+  }
+}
+
+// Export for backward compatibility
+export const deleteCourseSecure = deleteCourse

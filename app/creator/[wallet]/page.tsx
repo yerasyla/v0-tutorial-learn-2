@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { ClickUploadAvatar } from "@/components/click-upload-avatar"
 import { VerifiedBadge } from "@/components/verified-badge"
 import { supabase, type UserProfile, type CourseWithLessons } from "@/lib/supabase"
+import { updateProfile } from "@/app/actions/profile-actions"
 import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
 import { deleteAvatarFromSupabase } from "@/lib/supabase-storage"
@@ -182,6 +183,11 @@ export default function CreatorProfilePage() {
   const handleSaveProfile = async () => {
     if (!isOwner) {
       console.log("Not owner, cannot save")
+      toast({
+        title: "Unauthorized",
+        description: "You can only edit your own profile.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -208,19 +214,7 @@ export default function CreatorProfilePage() {
     setIsSaving(true)
 
     try {
-      // Clean Twitter handle (remove @ if present)
-      const cleanTwitterHandle = editForm.twitter_handle.replace(/^@/, "")
-
-      const profileData = {
-        wallet_address: walletAddress.toLowerCase(),
-        display_name: editForm.display_name.trim() || null,
-        avatar_url: editForm.avatar_url.trim() || null,
-        about_me: editForm.about_me.trim() || null,
-        website_url: editForm.website_url.trim() || null,
-        twitter_handle: cleanTwitterHandle.trim() || null,
-      }
-
-      console.log("Saving profile data:", profileData)
+      console.log("Saving profile with wallet:", account)
 
       // If avatar was removed, delete the old one from storage
       if (profile?.avatar_url && !editForm.avatar_url && profile.avatar_url.includes("supabase")) {
@@ -232,59 +226,23 @@ export default function CreatorProfilePage() {
         }
       }
 
-      if (profile?.id) {
-        // Update existing profile
-        console.log("Updating existing profile with ID:", profile.id)
+      const result = await updateProfile(walletAddress, editForm, account!)
 
-        const { data, error } = await supabase
-          .from("user_profiles")
-          .update(profileData)
-          .eq("wallet_address", walletAddress.toLowerCase())
-          .select()
-          .maybeSingle()
+      console.log("Profile update result:", result)
 
-        console.log("Update result:", { data, error })
-
-        if (error) throw error
-
-        // If no data returned, fetch the updated profile
-        if (!data) {
-          console.log("No data returned from update, fetching profile...")
-          const { data: refetched, error: refetchErr } = await supabase
-            .from("user_profiles")
-            .select("*")
-            .eq("wallet_address", walletAddress.toLowerCase())
-            .maybeSingle()
-
-          console.log("Refetch result:", { refetched, refetchErr })
-
-          if (refetchErr) throw refetchErr
-          if (refetched) setProfile(refetched)
-        } else {
-          setProfile(data)
-        }
-      } else {
-        // Create new profile
-        console.log("Creating new profile")
-
-        const { data, error } = await supabase.from("user_profiles").insert([profileData]).select().maybeSingle()
-
-        console.log("Insert result:", { data, error })
-
-        if (error) throw error
-        if (data) setProfile(data)
+      if (result.success) {
+        setProfile(result.profile)
+        setIsEditing(false)
+        toast({
+          title: "Profile updated successfully!",
+          description: "Your profile changes have been saved.",
+        })
       }
-
-      setIsEditing(false)
-      toast({
-        title: "Profile updated successfully!",
-        description: "Your profile changes have been saved.",
-      })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving profile:", error)
       toast({
         title: "Error saving profile",
-        description: `Failed to save your profile: ${error.message}`,
+        description: error.message || "Failed to save your profile",
         variant: "destructive",
       })
     } finally {

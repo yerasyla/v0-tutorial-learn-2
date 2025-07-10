@@ -71,21 +71,10 @@ export default function EditCoursePage() {
     console.log("Fetching course:", { courseId, account })
 
     try {
-      const result = await getCourseForEdit(courseId, account)
+      const data = await getCourseForEdit(courseId, account)
 
-      console.log("Course fetch result:", result)
+      console.log("Course fetch result:", data)
 
-      if (!result.success) {
-        setAccessDenied(true)
-        toast({
-          title: "Access denied",
-          description: result.error || "You can only edit your own courses.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      const data = result.course!
       setCourse(data)
       setTitle(data.title)
       setDescription(data.description || "")
@@ -115,12 +104,12 @@ export default function EditCoursePage() {
       )
 
       console.log("Course loaded successfully:", { title: data.title, lessonsCount: lessonForms.length })
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching course:", error)
       setAccessDenied(true)
       toast({
-        title: "Error loading course",
-        description: "Failed to load course data. Please try again.",
+        title: "Access denied",
+        description: error.message || "You can only edit your own courses.",
         variant: "destructive",
       })
     } finally {
@@ -148,26 +137,17 @@ export default function EditCoursePage() {
     if (!lesson?.isNew && account) {
       // Delete from database if it's an existing lesson
       try {
-        const result = await deleteLessonSecure(id, account)
-
-        if (!result.success) {
-          toast({
-            title: "Error deleting lesson",
-            description: result.error || "Failed to delete the lesson. Please try again.",
-            variant: "destructive",
-          })
-          return
-        }
+        await deleteLessonSecure(id, account)
 
         toast({
           title: "Lesson deleted",
           description: "The lesson has been removed from your course.",
         })
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error deleting lesson:", error)
         toast({
           title: "Error deleting lesson",
-          description: "Failed to delete the lesson. Please try again.",
+          description: error.message || "Failed to delete the lesson. Please try again.",
           variant: "destructive",
         })
         return
@@ -254,33 +234,25 @@ export default function EditCoursePage() {
       const lessonData: LessonUpdateData[] = validLessons.map((lesson, index) => ({
         id: lesson.isNew ? undefined : lesson.id,
         title: lesson.title,
-        description: lesson.description,
         youtube_url: lesson.youtube_url,
         order_index: index,
-        isNew: lesson.isNew,
       }))
 
       console.log("Calling updateCourse with:", { courseId, account, lessonData })
 
-      const result = await updateCourse(
+      await updateCourse(
         courseId,
-        account,
         {
           title: title.trim(),
           description: description.trim() || undefined,
         },
         lessonData,
+        account, // Pass the authenticated wallet address
       )
-
-      console.log("Update course result:", result)
-
-      if (!result.success) {
-        throw new Error(result.error || "Failed to update course")
-      }
 
       toast({
         title: "Course updated successfully!",
-        description: `Your course has been updated with ${result.validLessonsCount} lessons.`,
+        description: `Your course has been updated with ${validLessons.length} lessons.`,
       })
 
       console.log("Course update successful, redirecting to dashboard")
