@@ -16,6 +16,7 @@ import { supabase, type UserProfile, type CourseWithLessons } from "@/lib/supaba
 import { updateProfile } from "@/app/actions/profile-actions"
 import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
+import { WalletAuth } from "@/lib/wallet-auth"
 import { deleteAvatarFromSupabase } from "@/lib/supabase-storage"
 import {
   PencilSimple,
@@ -211,6 +212,17 @@ export default function CreatorProfilePage() {
       return
     }
 
+    // Get current session using WalletAuth
+    const session = WalletAuth.getSession()
+    if (!session) {
+      toast({
+        title: "Session expired",
+        description: "Please reconnect your wallet.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSaving(true)
 
     try {
@@ -226,7 +238,7 @@ export default function CreatorProfilePage() {
         }
       }
 
-      const result = await updateProfile(walletAddress, editForm, account!)
+      const result = await updateProfile(walletAddress, editForm, session)
 
       console.log("Profile update result:", result)
 

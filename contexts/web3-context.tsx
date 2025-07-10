@@ -2,210 +2,174 @@
 
 import type React from "react"
 import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import { ethers } from "ethers"
+import { WalletAuth, type WalletSession } from "@/lib/wallet-auth"
 import { toast } from "@/hooks/use-toast"
 
-// Wallet types and interfaces
-interface WalletProvider {
-  isMetaMask?: boolean
-  isCoinbaseWallet?: boolean
-  isTrustWallet?: boolean
-  isTrust?: boolean
-  request: (args: { method: string; params?: any[] }) => Promise<any>
-  on?: (event: string, handler: (...args: any[]) => void) => void
-  removeListener?: (event: string, handler: (...args: any[]) => void) => void
-}
-
 interface Web3ContextType {
+  // Connection state
   account: string | null
+  chainId: string | null
   isConnected: boolean
   isConnecting: boolean
-  chainId: string | null
   walletType: string | null
+
+  // Authentication state
+  isAuthenticated: boolean
+  authSession: WalletSession | null
+
+  // Methods
   connectWallet: () => Promise<void>
   disconnectWallet: () => void
-  switchNetwork: (chainId: string) => Promise<boolean>
+  switchNetwork: (chainId: string) => Promise<void>
+  getAuthSession: () => WalletSession | null
   error: string | null
   clearError: () => void
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined)
 
+const SUPPORTED_CHAINS = {
+  "0x38": {
+    chainId: "0x38",
+    chainName: "BNB Smart Chain",
+    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+    rpcUrls: ["https://bsc-dataseed.binance.org/"],
+    blockExplorerUrls: ["https://bscscan.com/"],
+  },
+  "0x1": {
+    chainId: "0x1",
+    chainName: "Ethereum Mainnet",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: ["https://mainnet.infura.io/v3/"],
+    blockExplorerUrls: ["https://etherscan.io/"],
+  },
+}
+
 export function Web3Provider({ children }: { children: React.ReactNode }) {
   const [account, setAccount] = useState<string | null>(null)
+  const [chainId, setChainId] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [chainId, setChainId] = useState<string | null>(null)
   const [walletType, setWalletType] = useState<string | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authSession, setAuthSession] = useState<WalletSession | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Clear error function
   const clearError = useCallback(() => {
     setError(null)
   }, [])
 
-  // Get wallet provider with mobile support
-  const getWalletProvider = useCallback((): WalletProvider | null => {
-    if (typeof window === "undefined") return null
-
-    try {
-      // Check for mobile wallet apps first
-      const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-
-      if (isMobile) {
-        // Trust Wallet
-        if (window.ethereum?.isTrust) return window.ethereum
-        // MetaMask Mobile
-        if (window.ethereum?.isMetaMask) return window.ethereum
-        // Coinbase Wallet
-        if (window.ethereum?.isCoinbaseWallet) return window.ethereum
-      }
-
-      // Check for any available ethereum provider
-      if (window.ethereum) {
-        return window.ethereum
-      }
-
-      return null
-    } catch (error) {
-      console.error("Error accessing wallet provider:", error)
-      return null
+  // Check for existing session on mount
+  useEffect(() => {
+    const session = WalletAuth.getSession()
+    if (session && WalletAuth.verifySession(session)) {
+      setAuthSession(session)
+      setIsAuthenticated(true)
+      console.log("Found valid existing session for:", session.address)
     }
   }, [])
 
-  // Detect wallet type with mobile support
-  const detectWalletType = useCallback((provider: WalletProvider): string => {
-    if (provider.isTrust || provider.isTrustWallet) return "Trust Wallet"
-    if (provider.isMetaMask) return "MetaMask"
-    if (provider.isCoinbaseWallet) return "Coinbase Wallet"
-    return "Browser Wallet"
-  }, [])
+  // Auto-connect on page load
+  useEffect(() => {
+    const autoConnect = async () => {
+      if (typeof window !== "undefined" && window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({ method: "eth_accounts" })
+          if (accounts.length > 0) {
+            const chainId = await window.ethereum.request({ method: "eth_chainId" })
+            setAccount(accounts[0])
+            setChainId(chainId)
+            setIsConnected(true)
+            setWalletType("MetaMask")
 
-  // Switch network function
-  const switchNetwork = useCallback(
-    async (targetChainId: string): Promise<boolean> => {
-      try {
-        const provider = getWalletProvider()
-        if (!provider) {
-          throw new Error("No wallet provider found")
+            // Check if we have a valid session for this account
+            const session = WalletAuth.getSession()
+            if (
+              session &&
+              session.address.toLowerCase() === accounts[0].toLowerCase() &&
+              WalletAuth.verifySession(session)
+            ) {
+              setAuthSession(session)
+              setIsAuthenticated(true)
+              console.log("Auto-reconnected to wallet:", {
+                account: accounts[0],
+                chainId,
+                walletType: "MetaMask",
+                authenticated: true,
+              })
+            } else {
+              console.log("Auto-reconnected to wallet:", {
+                account: accounts[0],
+                chainId,
+                walletType: "MetaMask",
+                authenticated: false,
+              })
+            }
+          }
+        } catch (error) {
+          console.error("Auto-connect failed:", error)
         }
-
-        await provider.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: targetChainId }],
-        })
-
-        return true
-      } catch (error: any) {
-        console.error("Network switch failed:", error)
-
-        if (error.code === 4902) {
-          // Chain not added to wallet - this should be handled by the calling code
-          throw new Error("Network not added to wallet")
-        } else if (error.code === 4001) {
-          // User rejected
-          throw new Error("Network switch rejected by user")
-        }
-
-        throw error
       }
-    },
-    [getWalletProvider],
-  )
-
-  // Handle account changes
-  const handleAccountsChanged = useCallback(
-    (accounts: string[]) => {
-      console.log("Accounts changed:", accounts)
-
-      if (accounts.length === 0) {
-        // User disconnected
-        setAccount(null)
-        setIsConnected(false)
-        setWalletType(null)
-        localStorage.removeItem("wallet-connection")
-        toast({
-          title: "Wallet Disconnected",
-          description: "Your wallet has been disconnected.",
-        })
-      } else {
-        // Account switched
-        const newAccount = accounts[0]
-        setAccount(newAccount)
-        setIsConnected(true)
-
-        // Update stored connection
-        const connectionData = {
-          account: newAccount,
-          walletType: walletType || "Browser Wallet",
-          timestamp: Date.now(),
-        }
-        localStorage.setItem("wallet-connection", JSON.stringify(connectionData))
-
-        toast({
-          title: "Account Switched",
-          description: `Switched to ${newAccount.slice(0, 6)}...${newAccount.slice(-4)}`,
-        })
-      }
-    },
-    [walletType],
-  )
-
-  // Handle chain changes
-  const handleChainChanged = useCallback((newChainId: string) => {
-    console.log("Chain changed:", newChainId)
-    setChainId(newChainId)
-  }, [])
-
-  // Handle connection errors
-  const handleConnectionError = useCallback((error: any) => {
-    console.error("Wallet connection error:", error)
-
-    let errorMessage = "Failed to connect wallet"
-
-    if (error.code === 4001) {
-      errorMessage = "Connection rejected by user"
-    } else if (error.code === -32002) {
-      errorMessage = "Connection request already pending"
-    } else if (error.code === -32603) {
-      errorMessage = "Internal wallet error"
-    } else if (error.message) {
-      errorMessage = error.message
     }
 
-    setError(errorMessage)
-    setIsConnecting(false)
-
-    toast({
-      title: "Connection Failed",
-      description: errorMessage,
-      variant: "destructive",
-    })
+    autoConnect()
   }, [])
 
-  // Connect wallet function with mobile support
-  const connectWallet = useCallback(async () => {
-    if (isConnecting) return
+  // Listen for account changes
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.ethereum) {
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts.length === 0) {
+          disconnectWallet()
+        } else if (accounts[0] !== account) {
+          setAccount(accounts[0])
+          // Clear authentication when account changes
+          WalletAuth.clearSession()
+          setAuthSession(null)
+          setIsAuthenticated(false)
+          console.log("Account changed, cleared authentication")
+
+          toast({
+            title: "Account Changed",
+            description: `Switched to ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}. Please sign in again.`,
+          })
+        }
+      }
+
+      const handleChainChanged = (chainId: string) => {
+        setChainId(chainId)
+        console.log("Chain changed to:", chainId)
+      }
+
+      window.ethereum.on("accountsChanged", handleAccountsChanged)
+      window.ethereum.on("chainChanged", handleChainChanged)
+
+      return () => {
+        window.ethereum?.removeListener("accountsChanged", handleAccountsChanged)
+        window.ethereum?.removeListener("chainChanged", handleChainChanged)
+      }
+    }
+  }, [account])
+
+  const connectWallet = async () => {
+    if (!window.ethereum) {
+      const errorMsg = "MetaMask is not installed. Please install MetaMask to continue."
+      setError(errorMsg)
+      toast({
+        title: "Wallet Not Found",
+        description: errorMsg,
+        variant: "destructive",
+      })
+      throw new Error(errorMsg)
+    }
 
     setIsConnecting(true)
     setError(null)
 
     try {
-      const provider = getWalletProvider()
-
-      if (!provider) {
-        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-
-        if (isMobile) {
-          throw new Error(
-            "No mobile wallet found. Please install MetaMask, Trust Wallet, or Coinbase Wallet from your app store.",
-          )
-        } else {
-          throw new Error("No wallet found. Please install MetaMask or another Web3 wallet.")
-        }
-      }
-
-      // Request account access
-      const accounts = await provider.request({
+      // Request account access - FIXED: correct method name
+      const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       })
 
@@ -213,162 +177,126 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
         throw new Error("No accounts returned from wallet")
       }
 
-      // Get current chain ID
-      const currentChainId = await provider.request({
-        method: "eth_chainId",
-      })
+      const chainId = await window.ethereum.request({ method: "eth_chainId" })
 
-      const connectedAccount = accounts[0]
-      const detectedWalletType = detectWalletType(provider)
-
-      // Update state
-      setAccount(connectedAccount)
+      setAccount(accounts[0])
+      setChainId(chainId)
       setIsConnected(true)
-      setChainId(currentChainId)
-      setWalletType(detectedWalletType)
+      setWalletType("MetaMask")
 
-      // Store connection data
-      const connectionData = {
-        account: connectedAccount,
-        walletType: detectedWalletType,
-        timestamp: Date.now(),
-      }
-      localStorage.setItem("wallet-connection", JSON.stringify(connectionData))
+      // Create authentication session
+      console.log("Creating new authentication session")
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      const signer = await provider.getSigner()
 
-      // Set up event listeners
-      if (provider.on) {
-        provider.on("accountsChanged", handleAccountsChanged)
-        provider.on("chainChanged", handleChainChanged)
-      }
+      const session = await WalletAuth.createSession(signer)
+      setAuthSession(session)
+      setIsAuthenticated(true)
 
       toast({
         title: "Wallet Connected! 🎉",
-        description: `Connected to ${detectedWalletType}: ${connectedAccount.slice(0, 6)}...${connectedAccount.slice(-4)}`,
+        description: `Connected to MetaMask: ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`,
       })
 
       console.log("Wallet connected successfully:", {
-        account: connectedAccount,
-        chainId: currentChainId,
-        walletType: detectedWalletType,
+        account: accounts[0],
+        chainId,
+        walletType: "MetaMask",
+        authenticated: true,
       })
     } catch (error: any) {
-      handleConnectionError(error)
+      console.error("Failed to connect wallet:", error)
+
+      let errorMessage = "Failed to connect wallet"
+
+      if (error.code === 4001) {
+        errorMessage = "Connection rejected by user"
+      } else if (error.code === -32002) {
+        errorMessage = "Connection request already pending"
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+
+      setError(errorMessage)
+
+      toast({
+        title: "Connection Failed",
+        description: errorMessage,
+        variant: "destructive",
+      })
+
+      throw new Error(errorMessage)
     } finally {
       setIsConnecting(false)
     }
-  }, [
-    isConnecting,
-    getWalletProvider,
-    detectWalletType,
-    handleAccountsChanged,
-    handleChainChanged,
-    handleConnectionError,
-  ])
+  }
 
-  // Disconnect wallet function
   const disconnectWallet = useCallback(() => {
+    setAccount(null)
+    setChainId(null)
+    setIsConnected(false)
+    setWalletType(null)
+    setIsAuthenticated(false)
+    setAuthSession(null)
+    setError(null)
+    WalletAuth.clearSession()
+
+    toast({
+      title: "Wallet Disconnected",
+      description: "Your wallet has been disconnected successfully.",
+    })
+
+    console.log("Wallet disconnected")
+  }, [])
+
+  const switchNetwork = async (targetChainId: string) => {
+    if (!window.ethereum) {
+      throw new Error("MetaMask is not installed")
+    }
+
     try {
-      const provider = getWalletProvider()
-
-      // Remove event listeners
-      if (provider?.removeListener) {
-        provider.removeListener("accountsChanged", handleAccountsChanged)
-        provider.removeListener("chainChanged", handleChainChanged)
-      }
-
-      // Clear state
-      setAccount(null)
-      setIsConnected(false)
-      setChainId(null)
-      setWalletType(null)
-      setError(null)
-
-      // Clear storage
-      localStorage.removeItem("wallet-connection")
-
-      toast({
-        title: "Wallet Disconnected",
-        description: "Your wallet has been disconnected successfully.",
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: targetChainId }],
       })
-
-      console.log("Wallet disconnected successfully")
-    } catch (error) {
-      console.error("Error disconnecting wallet:", error)
-    }
-  }, [getWalletProvider, handleAccountsChanged, handleChainChanged])
-
-  // Auto-reconnect on page load
-  useEffect(() => {
-    const autoReconnect = async () => {
-      try {
-        const stored = localStorage.getItem("wallet-connection")
-        if (!stored) return
-
-        const connectionData = JSON.parse(stored)
-        const isRecentConnection = Date.now() - connectionData.timestamp < 24 * 60 * 60 * 1000 // 24 hours
-
-        if (!isRecentConnection) {
-          localStorage.removeItem("wallet-connection")
-          return
-        }
-
-        const provider = getWalletProvider()
-        if (!provider) return
-
-        // Check if still connected
-        const accounts = await provider.request({ method: "eth_accounts" })
-        if (accounts && accounts.length > 0 && accounts[0] === connectionData.account) {
-          const currentChainId = await provider.request({ method: "eth_chainId" })
-
-          setAccount(accounts[0])
-          setIsConnected(true)
-          setChainId(currentChainId)
-          setWalletType(connectionData.walletType)
-
-          // Set up event listeners
-          if (provider.on) {
-            provider.on("accountsChanged", handleAccountsChanged)
-            provider.on("chainChanged", handleChainChanged)
-          }
-
-          console.log("Auto-reconnected to wallet:", {
-            account: accounts[0],
-            chainId: currentChainId,
-            walletType: connectionData.walletType,
+    } catch (error: any) {
+      // This error code indicates that the chain has not been added to MetaMask
+      if (error.code === 4902) {
+        const chainConfig = SUPPORTED_CHAINS[targetChainId as keyof typeof SUPPORTED_CHAINS]
+        if (chainConfig) {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [chainConfig],
           })
-        } else {
-          // Connection no longer valid
-          localStorage.removeItem("wallet-connection")
         }
-      } catch (error) {
-        console.error("Auto-reconnect failed:", error)
-        localStorage.removeItem("wallet-connection")
+      } else {
+        throw error
       }
     }
+  }
 
-    autoReconnect()
-  }, [getWalletProvider, handleAccountsChanged, handleChainChanged])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      const provider = getWalletProvider()
-      if (provider?.removeListener) {
-        provider.removeListener("accountsChanged", handleAccountsChanged)
-        provider.removeListener("chainChanged", handleChainChanged)
-      }
+  const getAuthSession = useCallback((): WalletSession | null => {
+    const session = WalletAuth.getSession()
+    if (session && WalletAuth.verifySession(session)) {
+      console.log("Retrieved valid auth session for:", session.address)
+      return session
     }
-  }, [getWalletProvider, handleAccountsChanged, handleChainChanged])
+    console.log("No valid auth session found")
+    return null
+  }, [])
 
   const value: Web3ContextType = {
     account,
+    chainId,
     isConnected,
     isConnecting,
-    chainId,
     walletType,
+    isAuthenticated,
+    authSession,
     connectWallet,
     disconnectWallet,
     switchNetwork,
+    getAuthSession,
     error,
     clearError,
   }
@@ -387,11 +315,6 @@ export function useWeb3() {
 // Extend Window interface for TypeScript
 declare global {
   interface Window {
-    ethereum?: WalletProvider & {
-      isMetaMask?: boolean
-      isCoinbaseWallet?: boolean
-      isTrustWallet?: boolean
-      isTrust?: boolean
-    }
+    ethereum?: any
   }
 }

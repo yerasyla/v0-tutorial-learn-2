@@ -1,189 +1,294 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { supabase, type Course, type Lesson } from "@/lib/supabase"
 import { useWeb3 } from "@/contexts/web3-context"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
-import { Plus, PencilSimple, Trash, Eye, BookOpen, WarningCircle, TrendUp, Play } from "@phosphor-icons/react"
-import { deleteCourseSecure } from "@/app/actions/course-actions"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Loader2, User, Edit3, Save, BookOpen, Plus, Settings, MoreHorizontal, Trash2, Eye } from "lucide-react"
+import { ClickUploadAvatar } from "@/components/click-upload-avatar"
+import { updateProfile, getProfile, type ProfileUpdateData } from "@/app/actions/profile-actions"
+import { VerifiedBadge } from "@/components/verified-badge"
+import { WalletAuth } from "@/lib/wallet-auth"
+import Link from "next/link"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { supabase } from "@/lib/supabase"
 
-type CourseWithLessons = Course & {
+interface UserProfile {
+  id: string
+  wallet_address: string
+  display_name: string | null
+  avatar_url: string | null
+  about_me: string | null
+  website_url: string | null
+  twitter_handle: string | null
+  created_at: string
+  updated_at: string
+  is_verified: boolean
+  verification_date: string | null
+  verification_notes: string | null
+}
+
+interface Course {
+  id: string
+  title: string
+  description: string | null
+  creator_wallet: string
+  created_at: string
+  updated_at: string
   lessons: Lesson[]
 }
 
-export default function CreatorDashboard() {
-  const [courses, setCourses] = useState<CourseWithLessons[]>([])
+interface Lesson {
+  id: string
+  title: string
+  description: string | null
+  youtube_url: string
+  order_index: number
+  course_id: string
+}
+
+export default function Dashboard() {
+  const { account, isConnected, isAuthenticated } = useWeb3()
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [courses, setCourses] = useState<Course[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [stats, setStats] = useState({
-    totalCourses: 0,
-    totalLessons: 0,
-    totalDonations: 0,
+  const [isSaving, setIsSaving] = useState(false)
+  const [formData, setFormData] = useState<ProfileUpdateData>({
+    display_name: "",
+    avatar_url: "",
+    about_me: "",
+    website_url: "",
+    twitter_handle: "",
   })
-  const { account, isConnected } = useWeb3()
 
+  // Fetch dashboard data
   useEffect(() => {
-    if (isConnected && account) {
-      fetchCreatorData()
-    } else {
-      setIsLoading(false)
-    }
-  }, [isConnected, account])
-
-  const fetchCreatorData = async () => {
-    if (!account) return
-
-    try {
-      // Fetch courses with lessons - with proper authorization
-      const { data: coursesData, error: coursesError } = await supabase
-        .from("courses")
-        .select(`
-          *,
-          lessons (*)
-        `)
-        .eq("creator_wallet", account.toLowerCase())
-        .order("created_at", { ascending: false })
-
-      if (coursesError) {
-        throw coursesError
-      }
-
-      // Sort lessons by order_index for each course
-      const coursesWithSortedLessons =
-        coursesData?.map((course) => ({
-          ...course,
-          lessons: course.lessons?.sort((a: Lesson, b: Lesson) => a.order_index - b.order_index) || [],
-        })) || []
-
-      setCourses(coursesWithSortedLessons)
-
-      // Calculate course and lesson stats
-      const totalLessons = coursesWithSortedLessons.reduce((sum, course) => sum + course.lessons.length, 0)
-
-      // Fetch donations for all creator's courses
-      let totalDonationsAmount = 0
-
-      if (coursesWithSortedLessons.length > 0) {
-        const courseIds = coursesWithSortedLessons.map((course) => course.id)
-
-        const { data: donationsData, error: donationsError } = await supabase
-          .from("donations")
-          .select("amount")
-          .in("course_id", courseIds)
-
-        if (donationsError) {
-          console.error("Error fetching donations:", donationsError)
-          // Don't throw error, just log it and continue with 0 donations
-        } else if (donationsData) {
-          // Calculate total donations by summing all amounts
-          totalDonationsAmount = donationsData.reduce((sum, donation) => {
-            const amount = Number.parseFloat(donation.amount) || 0
-            return sum + amount
-          }, 0)
-        }
-      }
-
-      // Update stats
-      setStats({
-        totalCourses: coursesWithSortedLessons.length,
-        totalLessons,
-        totalDonations: totalDonationsAmount,
-      })
-
-      console.log("Dashboard stats calculated:", {
-        totalCourses: coursesWithSortedLessons.length,
-        totalLessons,
-        totalDonations: totalDonationsAmount,
-      })
-    } catch (error) {
-      console.error("Error fetching creator data:", error)
-      toast({
-        title: "Error loading dashboard",
-        description: "Failed to load your dashboard data. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const deleteCourse = async (courseId: string) => {
-    if (!confirm("Are you sure you want to delete this course? This action cannot be undone.")) {
-      return
-    }
-
-    if (!account) {
-      toast({
-        title: "Authentication error",
-        description: "Please ensure your wallet is connected.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    try {
-      const result = await deleteCourseSecure(courseId, account)
-
-      if (!result.success) {
-        toast({
-          title: "Error deleting course",
-          description: result.error || "Failed to delete the course. Please try again.",
-          variant: "destructive",
-        })
+    async function fetchDashboardData() {
+      if (!account) {
+        setIsLoading(false)
         return
       }
 
-      toast({
-        title: "Course deleted",
-        description: "Your course has been successfully deleted.",
-      })
+      try {
+        console.log("Fetching dashboard data for wallet:", account)
 
-      // Refresh data after deletion
-      fetchCreatorData()
-    } catch (error) {
-      console.error("Error deleting course:", error)
+        // Fetch profile
+        const profileData = await getProfile(account)
+        setProfile(profileData)
+
+        if (profileData) {
+          setFormData({
+            display_name: profileData.display_name || "",
+            avatar_url: profileData.avatar_url || "",
+            about_me: profileData.about_me || "",
+            website_url: profileData.website_url || "",
+            twitter_handle: profileData.twitter_handle || "",
+          })
+        }
+
+        // Fetch user's courses
+        const { data: coursesData, error } = await supabase
+          .from("courses")
+          .select(`
+            *,
+            lessons (*)
+          `)
+          .eq("creator_wallet", account.toLowerCase())
+          .order("created_at", { ascending: false })
+
+        if (error) {
+          console.error("Error fetching courses:", error)
+          throw error
+        }
+
+        // Sort lessons by order_index for each course
+        const coursesWithSortedLessons =
+          coursesData?.map((course) => ({
+            ...course,
+            lessons: course.lessons?.sort((a: any, b: any) => a.order_index - b.order_index) || [],
+          })) || []
+
+        setCourses(coursesWithSortedLessons)
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load dashboard data",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [account])
+
+  const handleInputChange = (field: keyof ProfileUpdateData, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  const handleAvatarUpload = (url: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      avatar_url: url,
+    }))
+  }
+
+  const handleSaveProfile = async () => {
+    if (!account || !isAuthenticated) {
       toast({
-        title: "Error deleting course",
-        description: "Failed to delete the course. Please try again.",
+        title: "Authentication Required",
+        description: "Please connect and authenticate your wallet first",
         variant: "destructive",
       })
+      return
+    }
+
+    const session = WalletAuth.getSession()
+    if (!session) {
+      toast({
+        title: "Session Expired",
+        description: "Please reconnect your wallet to authenticate",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const result = await updateProfile(account, formData, session)
+
+      if (result.success) {
+        setProfile(result.profile)
+        toast({
+          title: "Profile Updated! 🎉",
+          description: "Your profile has been saved successfully",
+        })
+      }
+    } catch (error: any) {
+      console.error("Error saving profile:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save profile",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const getFirstVideoThumbnail = (lessons: Lesson[]) => {
-    if (lessons.length === 0) return "/placeholder.svg?height=160&width=280"
-
-    const firstLesson = lessons[0]
-
-    // Match regular YouTube videos
-    let match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
-    if (match) {
-      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+  const handleDeleteCourse = async (courseId: string, courseTitle: string) => {
+    if (!account || !isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please connect and authenticate your wallet first",
+        variant: "destructive",
+      })
+      return
     }
 
-    // Match YouTube Shorts
-    match = firstLesson.youtube_url.match(/youtube\.com\/shorts\/([^&\n?#]+)/)
-    if (match) {
-      return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
+    if (!confirm(`Are you sure you want to delete "${courseTitle}"? This action cannot be undone.`)) {
+      return
     }
 
-    return "/placeholder.svg?height=160&width=280"
+    const session = WalletAuth.getSession()
+    if (!session) {
+      toast({
+        title: "Session Expired",
+        description: "Please reconnect your wallet to authenticate",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Delete lessons first
+      const { error: lessonsError } = await supabase.from("lessons").delete().eq("course_id", courseId)
+
+      if (lessonsError) {
+        throw new Error(`Failed to delete lessons: ${lessonsError.message}`)
+      }
+
+      // Delete course
+      const { error: courseError } = await supabase
+        .from("courses")
+        .delete()
+        .eq("id", courseId)
+        .eq("creator_wallet", account.toLowerCase())
+
+      if (courseError) {
+        throw new Error(`Failed to delete course: ${courseError.message}`)
+      }
+
+      // Update local state
+      setCourses(courses.filter((course) => course.id !== courseId))
+
+      toast({
+        title: "Course Deleted",
+        description: `"${courseTitle}" has been deleted successfully`,
+      })
+    } catch (error: any) {
+      console.error("Error deleting course:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete course",
+        variant: "destructive",
+      })
+    }
   }
 
   if (!isConnected) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <Alert className="border-2 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
-            <WarningCircle size={18} className="text-orange-600 dark:text-orange-400" />
-            <AlertDescription className="text-orange-800 dark:text-orange-200 text-sm leading-relaxed ml-2">
-              Please connect your wallet to access the creator dashboard.
-            </AlertDescription>
-          </Alert>
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="p-6">
+              <div className="text-center mb-4">
+                <User className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <CardTitle className="text-xl text-foreground mb-3">Connect Your Wallet</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground leading-relaxed">
+                  Please connect your wallet to access your dashboard
+                </CardDescription>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="p-6">
+              <div className="text-center mb-4">
+                <User className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <CardTitle className="text-xl text-foreground mb-3">Authentication Required</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground leading-relaxed">
+                  Please sign the authentication message to access your dashboard
+                </CardDescription>
+              </div>
+            </CardHeader>
+          </Card>
         </div>
       </div>
     )
@@ -192,25 +297,10 @@ export default function CreatorDashboard() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="animate-pulse">
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <div className="h-8 bg-muted rounded w-1/3 mb-2"></div>
-                <div className="h-4 bg-muted rounded w-1/2"></div>
-              </div>
-              <div className="h-10 bg-muted rounded w-32"></div>
-            </div>
-            <div className="grid md:grid-cols-3 gap-4 mb-8">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-24 bg-muted rounded-lg"></div>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="h-64 bg-muted rounded-lg"></div>
-              ))}
-            </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <span className="ml-2">Loading dashboard...</span>
           </div>
         </div>
       </div>
@@ -219,149 +309,239 @@ export default function CreatorDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 gap-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2 leading-tight">Creator Dashboard</h1>
-            <p className="text-base text-muted-foreground leading-relaxed">
-              Manage your courses and track your progress
-            </p>
+            <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2 leading-tight flex items-center gap-2">
+              Dashboard
+              {profile?.is_verified && <VerifiedBadge />}
+            </h1>
+            <p className="text-sm text-muted-foreground leading-relaxed">Manage your courses and profile</p>
           </div>
-          <Link href="/create-course">
-            <Button
-              size="sm"
-              className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-6 py-2 text-sm h-10 font-semibold"
-            >
-              <Plus size={16} className="mr-2" />
-              Create Course
-            </Button>
-          </Link>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
-          <Card className="border border-border bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Courses</CardTitle>
-              <BookOpen size={18} className="text-brand-primary" />
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold text-foreground">{stats.totalCourses}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-border bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Lessons</CardTitle>
-              <Play size={18} className="text-green-600" weight="fill" />
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold text-foreground">{stats.totalLessons}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-border bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Donations</CardTitle>
-              <TrendUp size={18} className="text-purple-600" />
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="text-2xl font-bold text-foreground">{stats.totalDonations.toFixed(2)} TUT</div>
-              <p className="text-xs text-muted-foreground mt-1">Across all courses</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Courses Grid */}
-        {courses.length === 0 ? (
-          <Card className="max-w-xl mx-auto border border-border bg-card shadow-sm">
-            <CardContent className="text-center py-12 px-6">
-              <BookOpen size={48} className="text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-3">No courses yet</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                Create your first course to start sharing your knowledge!
-              </p>
-              <Link href="/create-course">
-                <Button
-                  size="sm"
-                  className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-6 py-2 text-sm h-10 font-semibold"
-                >
-                  <Plus size={16} className="mr-2" />
-                  Create Your First Course
+          <div className="flex gap-3">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="border border-border bg-transparent hover:bg-accent">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Profile Settings
                 </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {courses.map((course) => {
-              const thumbnailUrl = getFirstVideoThumbnail(course.lessons)
-
-              return (
-                <Card
-                  key={course.id}
-                  className="overflow-hidden border border-border bg-card shadow-sm hover:shadow-md transition-all duration-200 group h-full"
-                >
-                  <div className="aspect-video relative overflow-hidden">
-                    <img
-                      src={thumbnailUrl || "/placeholder.svg"}
-                      alt={course.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Profile Settings</DialogTitle>
+                  <DialogDescription>Update your creator profile information</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  {/* Avatar Upload */}
+                  <div className="space-y-2">
+                    <Label>Profile Picture</Label>
+                    <ClickUploadAvatar
+                      currentAvatarUrl={formData.avatar_url}
+                      walletAddress={account || ""}
+                      onUploadComplete={handleAvatarUpload}
                     />
-                    <div className="absolute top-2 right-2">
-                      <Badge variant="secondary" className="bg-white/90 text-gray-900 font-medium text-xs px-2 py-1">
-                        {course.lessons.length} lesson{course.lessons.length !== 1 ? "s" : ""}
-                      </Badge>
+                  </div>
+
+                  {/* Display Name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      value={formData.display_name}
+                      onChange={(e) => handleInputChange("display_name", e.target.value)}
+                      placeholder="Your display name"
+                      className="border border-border focus:border-brand-primary bg-background"
+                    />
+                  </div>
+
+                  {/* About Me */}
+                  <div className="space-y-2">
+                    <Label htmlFor="about_me">About Me</Label>
+                    <Textarea
+                      id="about_me"
+                      value={formData.about_me}
+                      onChange={(e) => handleInputChange("about_me", e.target.value)}
+                      placeholder="Tell us about yourself..."
+                      rows={4}
+                      className="border border-border focus:border-brand-primary resize-none bg-background"
+                    />
+                  </div>
+
+                  {/* Website URL */}
+                  <div className="space-y-2">
+                    <Label htmlFor="website_url">Website</Label>
+                    <Input
+                      id="website_url"
+                      type="url"
+                      value={formData.website_url}
+                      onChange={(e) => handleInputChange("website_url", e.target.value)}
+                      placeholder="https://your-website.com"
+                      className="border border-border focus:border-brand-primary bg-background"
+                    />
+                  </div>
+
+                  {/* Twitter Handle */}
+                  <div className="space-y-2">
+                    <Label htmlFor="twitter_handle">Twitter Handle</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                        @
+                      </span>
+                      <Input
+                        id="twitter_handle"
+                        value={formData.twitter_handle}
+                        onChange={(e) => handleInputChange("twitter_handle", e.target.value)}
+                        placeholder="username"
+                        className="pl-8 border border-border focus:border-brand-primary bg-background"
+                      />
                     </div>
                   </div>
-                  <CardHeader className="p-4 pb-2">
-                    <CardTitle className="line-clamp-2 text-sm font-semibold leading-tight mb-2 text-card-foreground">
-                      {course.title}
-                    </CardTitle>
-                    <CardDescription className="line-clamp-2 text-xs leading-relaxed text-muted-foreground mb-2">
-                      {course.description}
-                    </CardDescription>
-                    <div className="text-xs text-muted-foreground font-medium">
-                      {new Date(course.created_at).toLocaleDateString()}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <div className="flex gap-2">
-                      <Link href={`/courses/${course.id}`} className="flex-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full h-8 text-xs border border-border bg-transparent hover:bg-accent"
-                        >
-                          <Eye size={12} className="mr-1" />
-                          View
-                        </Button>
-                      </Link>
-                      <Link href={`/dashboard/edit/${course.id}`} className="flex-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full h-8 text-xs border border-border bg-transparent hover:bg-accent"
-                        >
-                          <PencilSimple size={12} className="mr-1" />
-                          Edit
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => deleteCourse(course.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 border border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700 h-8 px-2"
-                      >
-                        <Trash size={12} />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Button asChild className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground">
+              <Link href="/create-course">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Course
+              </Link>
+            </Button>
           </div>
-        )}
+        </div>
+
+        {/* Courses Section */}
+        <Card className="border border-border bg-card shadow-sm">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <BookOpen className="w-5 h-5" />
+                  My Courses
+                </CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">
+                  {courses.length} course{courses.length !== 1 ? "s" : ""} created
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {courses.length === 0 ? (
+              <div className="text-center py-12">
+                <BookOpen className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium text-foreground mb-2">No courses yet</h3>
+                <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                  Create your first course to start sharing your knowledge with the Web3 community.
+                </p>
+                <Button asChild className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground">
+                  <Link href="/create-course">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Course
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {courses.map((course) => (
+                  <Card key={course.id} className="border border-border bg-background shadow-sm">
+                    <CardHeader className="p-4 pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-base font-semibold text-foreground line-clamp-2 leading-tight">
+                            {course.title}
+                          </CardTitle>
+                          {course.description && (
+                            <CardDescription className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                              {course.description}
+                            </CardDescription>
+                          )}
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-accent">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/edit/${course.id}`} className="cursor-pointer">
+                                <Edit3 className="h-4 w-4 mr-2" />
+                                Edit Course
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/courses/${course.id}`} className="cursor-pointer">
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Course
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 cursor-pointer"
+                              onClick={() => handleDeleteCourse(course.id, course.title)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Course
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
+                        <span>
+                          {course.lessons.length} lesson{course.lessons.length !== 1 ? "s" : ""}
+                        </span>
+                        <span>Created {new Date(course.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          asChild
+                          size="sm"
+                          className="flex-1 h-8 text-xs bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
+                        >
+                          <Link href={`/dashboard/edit/${course.id}`}>
+                            <Edit3 className="h-3 w-3 mr-1" />
+                            Edit
+                          </Link>
+                        </Button>
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-8 text-xs border border-border bg-transparent hover:bg-accent"
+                        >
+                          <Link href={`/courses/${course.id}`}>
+                            <Eye className="h-3 w-3 mr-1" />
+                            View
+                          </Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

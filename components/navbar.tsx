@@ -7,7 +7,7 @@ import { Menu, Home, BookOpen, LayoutDashboard, Plus, Search } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { useWeb3 } from "@/contexts/web3-context"
-import { WalletStatus } from "@/components/optimized-wallet-status"
+import { OptimizedWalletStatus } from "@/components/optimized-wallet-status"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SearchButton } from "@/components/search-button"
 import { Logo } from "@/components/logo"
@@ -97,7 +97,7 @@ export default function Navbar() {
                 <SearchButton />
               </div>
               <ThemeToggle />
-              <WalletStatus />
+              <OptimizedWalletStatus />
 
               {/* Mobile Menu Button */}
               <Sheet open={isOpen} onOpenChange={setIsOpen}>
