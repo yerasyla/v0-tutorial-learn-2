@@ -54,17 +54,19 @@ const ConnectedWallet = memo(
     }, [])
 
     const getDisplayName = useCallback(() => {
-      if (userProfile?.display_name) {
+      if (userProfile?.display_name?.trim()) {
         return userProfile.display_name
       }
       return formatAddress(account)
     }, [userProfile?.display_name, account, formatAddress])
 
     const getAvatarFallback = useCallback(() => {
-      if (userProfile?.display_name) {
+      if (userProfile?.display_name?.trim()) {
         return userProfile.display_name.charAt(0).toUpperCase()
       }
-      return account.charAt(2).toUpperCase()
+      // Remove 0x prefix and get first character
+      const cleanAddress = account.replace(/^0x/i, "")
+      return cleanAddress.charAt(0).toUpperCase() || "?"
     }, [userProfile?.display_name, account])
 
     return (
@@ -115,12 +117,14 @@ const ConnectedWallet = memo(
 ConnectedWallet.displayName = "ConnectedWallet"
 
 export const WalletStatus = memo(() => {
-  const { account, isConnected, isConnecting, connectWallet, disconnectWallet } = useWeb3()
+  const { account, isConnected, isConnecting, connectWallet, disconnectWallet, error } = useWeb3()
 
   const { data: userProfile, isLoading: isLoadingProfile } = useOptimizedQuery<UserProfile | null>({
     queryKey: `user-profile-${account}`,
     queryFn: async () => {
       if (!account) return null
+
+      console.log("Fetching profile for account:", account)
 
       const { data, error } = await supabase
         .from("user_profiles")
@@ -133,6 +137,7 @@ export const WalletStatus = memo(() => {
         return null
       }
 
+      console.log("Profile data:", data)
       return data || null
     },
     enabled: !!account && isConnected,
@@ -148,13 +153,18 @@ export const WalletStatus = memo(() => {
     }
   }, [connectWallet])
 
-  if (!isConnected) {
+  // Show error if there is one
+  if (error) {
+    console.error("Wallet error:", error)
+  }
+
+  if (!isConnected || !account) {
     return <WalletButton onClick={handleConnect} isConnecting={isConnecting} />
   }
 
   return (
     <ConnectedWallet
-      account={account!}
+      account={account}
       userProfile={userProfile}
       isLoadingProfile={isLoadingProfile}
       onDisconnect={disconnectWallet}

@@ -9,6 +9,7 @@ interface Web3ContextType {
   isConnected: boolean
   isConnecting: boolean
   address: string | null
+  account: string | null // Alias for address for backward compatibility
   chainId: number | null
 
   // Authentication state
@@ -18,16 +19,22 @@ interface Web3ContextType {
   // Connection methods
   connect: () => Promise<void>
   disconnect: () => void
+  connectWallet: () => Promise<void> // Legacy alias
+  disconnectWallet: () => void // Legacy alias
 
   // Authentication methods
   authenticate: () => Promise<void>
 
   // Network methods
-  switchNetwork: (chainId: number) => Promise<void>
+  switchNetwork: (targetChainId: string) => Promise<void>
 
   // Provider access
   provider: ethers.BrowserProvider | null
   signer: ethers.JsonRpcSigner | null
+
+  // Error handling
+  error: string | null
+  clearError: () => void
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined)
@@ -46,6 +53,13 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   // Provider state
   const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
   const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null)
+
+  // Error state
+  const [error, setError] = useState<string | null>(null)
+
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
 
   // Check if wallet is available
   const isWalletAvailable = useCallback(() => {
@@ -73,11 +87,14 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
           setIsConnected(true)
           setSigner(signer)
 
+          console.log("Auto-connected to wallet:", address)
+
           // Check authentication status
           const { WalletAuth } = await import("@/lib/wallet-auth")
           const session = WalletAuth.getSession()
           if (session && session.address.toLowerCase() === address.toLowerCase()) {
             setIsAuthenticated(true)
+            console.log("Found valid session for:", address)
           }
         }
       } catch (error) {
@@ -93,6 +110,8 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     if (!isWalletAvailable()) return
 
     const handleAccountsChanged = async (accounts: string[]) => {
+      console.log("Accounts changed:", accounts)
+
       if (accounts.length === 0) {
         // Wallet disconnected
         setIsConnected(false)
@@ -100,31 +119,43 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
         setChainId(null)
         setIsAuthenticated(false)
         setSigner(null)
+        setError(null)
 
         // Clear authentication
         const { WalletAuth } = await import("@/lib/wallet-auth")
         WalletAuth.clearSession()
+        console.log("Wallet disconnected")
       } else {
         // Account changed
-        const provider = new ethers.BrowserProvider(window.ethereum)
-        const signer = await provider.getSigner()
-        const newAddress = await signer.getAddress()
-        const network = await provider.getNetwork()
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum)
+          const signer = await provider.getSigner()
+          const newAddress = await signer.getAddress()
+          const network = await provider.getNetwork()
 
-        setAddress(newAddress)
-        setChainId(Number(network.chainId))
-        setIsConnected(true)
-        setSigner(signer)
+          setAddress(newAddress)
+          setChainId(Number(network.chainId))
+          setIsConnected(true)
+          setSigner(signer)
+          setProvider(provider)
 
-        // Clear old authentication when account changes
-        setIsAuthenticated(false)
-        const { WalletAuth } = await import("@/lib/wallet-auth")
-        WalletAuth.clearSession()
+          console.log("Account changed to:", newAddress)
+
+          // Clear old authentication when account changes
+          setIsAuthenticated(false)
+          const { WalletAuth } = await import("@/lib/wallet-auth")
+          WalletAuth.clearSession()
+        } catch (error) {
+          console.error("Error handling account change:", error)
+          setError("Failed to handle account change")
+        }
       }
     }
 
     const handleChainChanged = (chainId: string) => {
-      setChainId(Number.parseInt(chainId, 16))
+      const newChainId = Number.parseInt(chainId, 16)
+      console.log("Chain changed to:", newChainId)
+      setChainId(newChainId)
     }
 
     window.ethereum?.on("accountsChanged", handleAccountsChanged)
@@ -139,11 +170,16 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
   // Connect wallet
   const connect = useCallback(async () => {
     if (!isWalletAvailable()) {
-      throw new Error("No wallet found. Please install MetaMask or another Web3 wallet.")
+      const errorMsg = "No wallet found. Please install MetaMask or another Web3 wallet."
+      setError(errorMsg)
+      throw new Error(errorMsg)
     }
 
     setIsConnecting(true)
+    setError(null)
+
     try {
+      console.log("Requesting wallet connection...")
       const provider = new ethers.BrowserProvider(window.ethereum)
       await provider.send("eth_requestAccounts", [])
 
@@ -157,10 +193,32 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
       setChainId(Number(network.chainId))
       setIsConnected(true)
 
-      console.log("Wallet connected:", address)
+      console.log("Wallet connected successfully:", address)
+
+      // Automatically authenticate after connection
+      try {
+        const { WalletAuth } = await import("@/lib/wallet-auth")
+        await WalletAuth.authenticate(signer, address)
+        setIsAuthenticated(true)
+        console.log("Wallet authenticated successfully")
+      } catch (authError) {
+        console.error("Authentication failed:", authError)
+        // Don't throw here - connection succeeded even if auth failed
+      }
     } catch (error: any) {
       console.error("Failed to connect wallet:", error)
-      throw error
+      let errorMessage = "Failed to connect wallet"
+
+      if (error.code === 4001) {
+        errorMessage = "Connection rejected by user"
+      } else if (error.code === -32002) {
+        errorMessage = "Connection request already pending"
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+
+      setError(errorMessage)
+      throw new Error(errorMessage)
     } finally {
       setIsConnecting(false)
     }
@@ -174,6 +232,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     setIsAuthenticated(false)
     setProvider(null)
     setSigner(null)
+    setError(null)
 
     // Clear authentication
     const { WalletAuth } = await import("@/lib/wallet-auth")
@@ -181,6 +240,10 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
     console.log("Wallet disconnected")
   }, [])
+
+  // Legacy aliases for backward compatibility
+  const connectWallet = connect
+  const disconnectWallet = disconnect
 
   // Authenticate with wallet
   const authenticate = useCallback(async () => {
@@ -196,6 +259,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
       console.log("Wallet authenticated successfully")
     } catch (error: any) {
       console.error("Authentication failed:", error)
+      setError(`Authentication failed: ${error.message}`)
       throw error
     } finally {
       setIsAuthenticating(false)
@@ -204,7 +268,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
 
   // Switch network
   const switchNetwork = useCallback(
-    async (targetChainId: number) => {
+    async (targetChainId: string) => {
       if (!isWalletAvailable()) {
         throw new Error("No wallet found")
       }
@@ -212,10 +276,11 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
       try {
         await window.ethereum.request({
           method: "wallet_switchEthereumChain",
-          params: [{ chainId: `0x${targetChainId.toString(16)}` }],
+          params: [{ chainId: targetChainId }],
         })
       } catch (error: any) {
         console.error("Failed to switch network:", error)
+        setError(`Failed to switch network: ${error.message}`)
         throw error
       }
     },
@@ -227,6 +292,7 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     isConnected,
     isConnecting,
     address,
+    account: address, // Alias for backward compatibility
     chainId,
 
     // Authentication state
@@ -236,12 +302,18 @@ export function Web3Provider({ children }: { children: React.ReactNode }) {
     // Methods
     connect,
     disconnect,
+    connectWallet,
+    disconnectWallet,
     authenticate,
     switchNetwork,
 
     // Provider access
     provider,
     signer,
+
+    // Error handling
+    error,
+    clearError,
   }
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>
