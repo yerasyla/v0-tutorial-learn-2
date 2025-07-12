@@ -7,7 +7,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase environment variables")
 }
 
-// Client-side Supabase client - READ ONLY due to RLS policies
+// Client-side Supabase client - READ ONLY due to revoked permissions
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
@@ -15,7 +15,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// Note: This client can only read data due to RLS policies
+// Note: This client can only read data due to revoked INSERT/UPDATE/DELETE permissions
 // All write operations must go through server actions with proper authentication
 
 export type Course = {
@@ -66,7 +66,7 @@ export type UserProfile = {
   updated_at: string
 }
 
-// Test connection function
+// Test connection function - only tests read access
 export const testConnection = async () => {
   try {
     const { data, error } = await supabase.from("courses").select("count", { count: "exact", head: true })
@@ -74,7 +74,7 @@ export const testConnection = async () => {
       console.error("Supabase connection test failed:", error)
       return false
     }
-    console.log("Supabase connection successful")
+    console.log("Supabase connection successful (read-only)")
     return true
   } catch (error) {
     console.error("Supabase connection error:", error)

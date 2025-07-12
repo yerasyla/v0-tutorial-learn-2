@@ -1,132 +1,247 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { BrowserProvider, type JsonRpcSigner } from "ethers"
+import type React from "react"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
+import { ethers } from "ethers"
 
 interface Web3ContextType {
-  account: string | null
+  // Wallet connection state
   isConnected: boolean
+  isConnecting: boolean
+  address: string | null
+  chainId: number | null
+
+  // Authentication state
   isAuthenticated: boolean
-  provider: BrowserProvider | null
-  signer: JsonRpcSigner | null
-  connectWallet: () => Promise<void>
-  disconnectWallet: () => void
-  switchNetwork: (chainId: string) => Promise<void>
-  error: string | null
+  isAuthenticating: boolean
+
+  // Connection methods
+  connect: () => Promise<void>
+  disconnect: () => void
+
+  // Authentication methods
+  authenticate: () => Promise<void>
+
+  // Network methods
+  switchNetwork: (chainId: number) => Promise<void>
+
+  // Provider access
+  provider: ethers.BrowserProvider | null
+  signer: ethers.JsonRpcSigner | null
 }
 
 const Web3Context = createContext<Web3ContextType | undefined>(undefined)
 
-interface Web3ProviderProps {
-  children: ReactNode
-}
-
-export function Web3Provider({ children }: Web3ProviderProps) {
-  const [account, setAccount] = useState<string | null>(null)
+export function Web3Provider({ children }: { children: React.ReactNode }) {
+  // Connection state
   const [isConnected, setIsConnected] = useState(false)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [provider, setProvider] = useState<BrowserProvider | null>(null)
-  const [signer, setSigner] = useState<JsonRpcSigner | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [address, setAddress] = useState<string | null>(null)
+  const [chainId, setChainId] = useState<number | null>(null)
 
-  // Check if wallet is already connected
-  useEffect(() => {
-    checkConnection()
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+
+  // Provider state
+  const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
+  const [signer, setSigner] = useState<ethers.JsonRpcSigner | null>(null)
+
+  // Check if wallet is available
+  const isWalletAvailable = useCallback(() => {
+    return typeof window !== "undefined" && window.ethereum
   }, [])
 
-  const checkConnection = async () => {
-    try {
-      if (typeof window !== "undefined" && window.ethereum) {
-        const provider = new BrowserProvider(window.ethereum)
-        const accounts = await provider.listAccounts()
+  // Initialize connection on mount
+  useEffect(() => {
+    const initializeConnection = async () => {
+      if (!isWalletAvailable()) return
 
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum)
+        setProvider(provider)
+
+        // Check if already connected
+        const accounts = await provider.listAccounts()
         if (accounts.length > 0) {
           const signer = await provider.getSigner()
           const address = await signer.getAddress()
+          const network = await provider.getNetwork()
 
-          setAccount(address)
-          setProvider(provider)
-          setSigner(signer)
+          setAddress(address)
+          setChainId(Number(network.chainId))
           setIsConnected(true)
+          setSigner(signer)
 
-          // Check if user is authenticated (has valid session)
-          const session = localStorage.getItem("wallet_session")
-          if (session) {
-            try {
-              const parsedSession = JSON.parse(session)
-              if (parsedSession.address?.toLowerCase() === address.toLowerCase()) {
-                setIsAuthenticated(true)
-              }
-            } catch (e) {
-              console.error("Error parsing session:", e)
-            }
+          // Check authentication status
+          const { WalletAuth } = await import("@/lib/wallet-auth")
+          const session = WalletAuth.getSession()
+          if (session && session.address.toLowerCase() === address.toLowerCase()) {
+            setIsAuthenticated(true)
           }
         }
+      } catch (error) {
+        console.error("Failed to initialize wallet connection:", error)
       }
-    } catch (error) {
-      console.error("Error checking connection:", error)
     }
-  }
 
-  const connectWallet = async () => {
-    try {
-      setError(null)
+    initializeConnection()
+  }, [isWalletAvailable])
 
-      if (!window.ethereum) {
-        throw new Error("MetaMask is not installed")
+  // Listen for account changes
+  useEffect(() => {
+    if (!isWalletAvailable()) return
+
+    const handleAccountsChanged = async (accounts: string[]) => {
+      if (accounts.length === 0) {
+        // Wallet disconnected
+        setIsConnected(false)
+        setAddress(null)
+        setChainId(null)
+        setIsAuthenticated(false)
+        setSigner(null)
+
+        // Clear authentication
+        const { WalletAuth } = await import("@/lib/wallet-auth")
+        WalletAuth.clearSession()
+      } else {
+        // Account changed
+        const provider = new ethers.BrowserProvider(window.ethereum)
+        const signer = await provider.getSigner()
+        const newAddress = await signer.getAddress()
+        const network = await provider.getNetwork()
+
+        setAddress(newAddress)
+        setChainId(Number(network.chainId))
+        setIsConnected(true)
+        setSigner(signer)
+
+        // Clear old authentication when account changes
+        setIsAuthenticated(false)
+        const { WalletAuth } = await import("@/lib/wallet-auth")
+        WalletAuth.clearSession()
       }
+    }
 
-      const provider = new BrowserProvider(window.ethereum)
+    const handleChainChanged = (chainId: string) => {
+      setChainId(Number.parseInt(chainId, 16))
+    }
+
+    window.ethereum?.on("accountsChanged", handleAccountsChanged)
+    window.ethereum?.on("chainChanged", handleChainChanged)
+
+    return () => {
+      window.ethereum?.removeListener("accountsChanged", handleAccountsChanged)
+      window.ethereum?.removeListener("chainChanged", handleChainChanged)
+    }
+  }, [isWalletAvailable])
+
+  // Connect wallet
+  const connect = useCallback(async () => {
+    if (!isWalletAvailable()) {
+      throw new Error("No wallet found. Please install MetaMask or another Web3 wallet.")
+    }
+
+    setIsConnecting(true)
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum)
       await provider.send("eth_requestAccounts", [])
 
       const signer = await provider.getSigner()
       const address = await signer.getAddress()
+      const network = await provider.getNetwork()
 
-      setAccount(address)
       setProvider(provider)
       setSigner(signer)
+      setAddress(address)
+      setChainId(Number(network.chainId))
       setIsConnected(true)
-    } catch (error: any) {
-      console.error("Error connecting wallet:", error)
-      setError(error.message || "Failed to connect wallet")
-    }
-  }
 
-  const disconnectWallet = () => {
-    setAccount(null)
+      console.log("Wallet connected:", address)
+    } catch (error: any) {
+      console.error("Failed to connect wallet:", error)
+      throw error
+    } finally {
+      setIsConnecting(false)
+    }
+  }, [isWalletAvailable])
+
+  // Disconnect wallet
+  const disconnect = useCallback(async () => {
+    setIsConnected(false)
+    setAddress(null)
+    setChainId(null)
+    setIsAuthenticated(false)
     setProvider(null)
     setSigner(null)
-    setIsConnected(false)
-    setIsAuthenticated(false)
-    localStorage.removeItem("wallet_session")
-  }
 
-  const switchNetwork = async (chainId: string) => {
+    // Clear authentication
+    const { WalletAuth } = await import("@/lib/wallet-auth")
+    WalletAuth.clearSession()
+
+    console.log("Wallet disconnected")
+  }, [])
+
+  // Authenticate with wallet
+  const authenticate = useCallback(async () => {
+    if (!isConnected || !address || !signer) {
+      throw new Error("Wallet not connected")
+    }
+
+    setIsAuthenticating(true)
     try {
-      if (!window.ethereum) {
-        throw new Error("MetaMask is not installed")
+      const { WalletAuth } = await import("@/lib/wallet-auth")
+      await WalletAuth.authenticate(signer, address)
+      setIsAuthenticated(true)
+      console.log("Wallet authenticated successfully")
+    } catch (error: any) {
+      console.error("Authentication failed:", error)
+      throw error
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }, [isConnected, address, signer])
+
+  // Switch network
+  const switchNetwork = useCallback(
+    async (targetChainId: number) => {
+      if (!isWalletAvailable()) {
+        throw new Error("No wallet found")
       }
 
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId }],
-      })
-    } catch (error: any) {
-      console.error("Error switching network:", error)
-      setError(error.message || "Failed to switch network")
-    }
-  }
+      try {
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: `0x${targetChainId.toString(16)}` }],
+        })
+      } catch (error: any) {
+        console.error("Failed to switch network:", error)
+        throw error
+      }
+    },
+    [isWalletAvailable],
+  )
 
   const value: Web3ContextType = {
-    account,
+    // Connection state
     isConnected,
+    isConnecting,
+    address,
+    chainId,
+
+    // Authentication state
     isAuthenticated,
+    isAuthenticating,
+
+    // Methods
+    connect,
+    disconnect,
+    authenticate,
+    switchNetwork,
+
+    // Provider access
     provider,
     signer,
-    connectWallet,
-    disconnectWallet,
-    switchNetwork,
-    error,
   }
 
   return <Web3Context.Provider value={value}>{children}</Web3Context.Provider>
@@ -140,11 +255,17 @@ export function useWeb3() {
   return context
 }
 
-// Export useWallet as an alias for backward compatibility
+// Alias for backward compatibility
 export const useWallet = useWeb3
 
+// Type declarations for window.ethereum
 declare global {
   interface Window {
-    ethereum?: any
+    ethereum?: {
+      request: (args: { method: string; params?: any[] }) => Promise<any>
+      on: (event: string, callback: (...args: any[]) => void) => void
+      removeListener: (event: string, callback: (...args: any[]) => void) => void
+      isMetaMask?: boolean
+    }
   }
 }

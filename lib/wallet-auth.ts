@@ -2,10 +2,9 @@ import { ethers } from "ethers"
 
 export interface WalletSession {
   address: string
-  message: string
   signature: string
+  message: string
   timestamp: number
-  expiresAt: number
 }
 
 export class WalletAuth {
@@ -13,39 +12,35 @@ export class WalletAuth {
   private static readonly SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
   /**
-   * Create authentication message for wallet signing
+   * Generate authentication message
    */
-  static createAuthMessage(address: string, timestamp: number): string {
-    return `Welcome to Tutorial Platform!
+  private static generateMessage(address: string, timestamp: number): string {
+    return `Welcome to Tutorial Learn Platform!
 
-Please sign this message to authenticate your wallet.
+This request will not trigger a blockchain transaction or cost any gas fees.
 
-Wallet: ${address}
+Wallet address: ${address}
 Timestamp: ${timestamp}
 
-This signature will be valid for 24 hours.`
+By signing this message, you authenticate your wallet for secure access to the platform.`
   }
 
   /**
-   * Create a new authentication session
+   * Authenticate user with wallet signature
    */
-  static async createSession(signer: ethers.Signer): Promise<WalletSession> {
-    const address = await signer.getAddress()
-    const timestamp = Date.now()
-    const expiresAt = timestamp + this.SESSION_DURATION
-    const message = this.createAuthMessage(address, timestamp)
-
-    console.log("Creating authentication session for:", address)
-
+  static async authenticate(signer: ethers.JsonRpcSigner, address: string): Promise<WalletSession> {
     try {
+      const timestamp = Date.now()
+      const message = this.generateMessage(address, timestamp)
+
+      console.log("Requesting signature for authentication...")
       const signature = await signer.signMessage(message)
 
       const session: WalletSession = {
         address: address.toLowerCase(),
-        message,
         signature,
+        message,
         timestamp,
-        expiresAt,
       }
 
       // Store session in localStorage
@@ -53,17 +48,11 @@ This signature will be valid for 24 hours.`
         localStorage.setItem(this.SESSION_KEY, JSON.stringify(session))
       }
 
-      console.log("Session created and stored:", {
-        address: session.address,
-        hasSignature: !!session.signature,
-        timestamp: session.timestamp,
-        expiresAt: session.expiresAt,
-      })
-
+      console.log("Authentication successful for:", address)
       return session
-    } catch (error) {
-      console.error("Failed to create authentication session:", error)
-      throw new Error("Failed to sign authentication message")
+    } catch (error: any) {
+      console.error("Authentication failed:", error)
+      throw new Error(`Authentication failed: ${error.message}`)
     }
   }
 
@@ -74,38 +63,20 @@ This signature will be valid for 24 hours.`
     if (typeof window === "undefined") return null
 
     try {
-      const sessionStr = localStorage.getItem(this.SESSION_KEY)
-      if (!sessionStr) {
-        console.log("No session found in localStorage")
-        return null
-      }
+      const sessionData = localStorage.getItem(this.SESSION_KEY)
+      if (!sessionData) return null
 
-      const session: WalletSession = JSON.parse(sessionStr)
-
-      // Validate session structure
-      if (!session.address || !session.message || !session.signature || !session.timestamp || !session.expiresAt) {
-        console.error("Invalid session structure:", {
-          hasAddress: !!session.address,
-          hasMessage: !!session.message,
-          hasSignature: !!session.signature,
-          hasTimestamp: !!session.timestamp,
-          hasExpiresAt: !!session.expiresAt,
-        })
-        this.clearSession()
-        return null
-      }
+      const session: WalletSession = JSON.parse(sessionData)
 
       // Check if session is expired
-      if (Date.now() > session.expiresAt) {
-        console.log("Session expired, clearing...")
+      if (Date.now() - session.timestamp > this.SESSION_DURATION) {
         this.clearSession()
         return null
       }
 
-      console.log("Retrieved valid session for:", session.address)
       return session
     } catch (error) {
-      console.error("Error retrieving session:", error)
+      console.error("Failed to get session:", error)
       this.clearSession()
       return null
     }
@@ -116,10 +87,8 @@ This signature will be valid for 24 hours.`
    */
   static verifySession(session: WalletSession): boolean {
     try {
-      console.log("Verifying session signature...")
-
       // Check expiration
-      if (Date.now() > session.expiresAt) {
+      if (Date.now() - session.timestamp > this.SESSION_DURATION) {
         console.log("Session expired")
         return false
       }
@@ -128,11 +97,9 @@ This signature will be valid for 24 hours.`
       const recoveredAddress = ethers.verifyMessage(session.message, session.signature)
       const isValid = recoveredAddress.toLowerCase() === session.address.toLowerCase()
 
-      console.log("Session verification result:", {
-        isValid,
-        recoveredAddress,
-        sessionAddress: session.address,
-      })
+      if (!isValid) {
+        console.error("Invalid signature for session")
+      }
 
       return isValid
     } catch (error) {
@@ -148,33 +115,13 @@ This signature will be valid for 24 hours.`
     if (typeof window !== "undefined") {
       localStorage.removeItem(this.SESSION_KEY)
     }
-    console.log("Session cleared")
   }
 
   /**
-   * Check if user has valid session
+   * Check if user is authenticated
    */
-  static hasValidSession(): boolean {
+  static isAuthenticated(): boolean {
     const session = this.getSession()
     return session ? this.verifySession(session) : false
   }
-
-  /**
-   * Get session for API calls
-   */
-  static getSessionForAPI(): WalletSession | null {
-    const session = this.getSession()
-    if (!session || !this.verifySession(session)) {
-      return null
-    }
-    return session
-  }
-}
-
-/**
- * Helper wrapper so consumers can `import { verifyWalletSession }`
- * instead of accessing the class method manually.
- */
-export function verifyWalletSession(session: WalletSession): boolean {
-  return WalletAuth.verifySession(session)
 }
