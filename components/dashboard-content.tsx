@@ -1,39 +1,36 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useWeb3 } from "@/contexts/web3-context"
-import { getDashboardData } from "@/app/actions/dashboard-actions"
-import { updateProfile, type ProfileUpdateData } from "@/app/actions/profile-actions"
-import { deleteCourse } from "@/app/actions/secure-course-actions"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/hooks/use-toast"
-import { Pencil, Trash2, Eye, Settings, BookOpen, Users, DollarSign } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Loader2, User, Edit3, Save, BookOpen, Plus, Settings, MoreHorizontal, Trash2, Eye } from "lucide-react"
+import { ClickUploadAvatar } from "@/components/click-upload-avatar"
+import { updateProfile, type ProfileUpdateData } from "@/app/actions/profile-actions"
+import { getDashboardData, deleteCourseSecure, type DashboardData } from "@/app/actions/dashboard-actions"
+import { VerifiedBadge } from "@/components/verified-badge"
+import { WalletAuth } from "@/lib/wallet-auth"
 import Link from "next/link"
-
-interface DashboardData {
-  courses: any[]
-  profile: any
-  stats: {
-    totalCourses: number
-    totalLessons: number
-    totalDonations: number
-  }
-}
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 export function DashboardContent() {
-  const { getAuthSession, account } = useWeb3()
-  const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
-  const [profileForm, setProfileForm] = useState<ProfileUpdateData>({
+  const { account, isConnected, isAuthenticated } = useWeb3()
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [formData, setFormData] = useState<ProfileUpdateData>({
     display_name: "",
     avatar_url: "",
     about_me: "",
@@ -41,302 +38,508 @@ export function DashboardContent() {
     twitter_handle: "",
   })
 
-  // Load dashboard data
+  // Fetch dashboard data
   useEffect(() => {
-    const loadData = async () => {
-      if (!account) return
+    async function fetchDashboardData() {
+      if (!account || !isAuthenticated) {
+        setIsLoading(false)
+        return
+      }
 
       try {
-        const session = getAuthSession()
+        console.log("Fetching dashboard data for wallet:", account)
+
+        const session = WalletAuth.getSession()
         if (!session) {
           toast({
-            title: "Authentication Required",
-            description: "Please sign in with your wallet first.",
+            title: "Session Expired",
+            description: "Please reconnect your wallet to authenticate",
             variant: "destructive",
           })
+          setIsLoading(false)
           return
         }
 
-        const dashboardData = await getDashboardData(session)
-        setData(dashboardData)
+        const data = await getDashboardData(session)
+        setDashboardData(data)
 
-        // Initialize profile form
-        if (dashboardData.profile) {
-          setProfileForm({
-            display_name: dashboardData.profile.display_name || "",
-            avatar_url: dashboardData.profile.avatar_url || "",
-            about_me: dashboardData.profile.about_me || "",
-            website_url: dashboardData.profile.website_url || "",
-            twitter_handle: dashboardData.profile.twitter_handle || "",
+        if (data.profile) {
+          setFormData({
+            display_name: data.profile.display_name || "",
+            avatar_url: data.profile.avatar_url || "",
+            about_me: data.profile.about_me || "",
+            website_url: data.profile.website_url || "",
+            twitter_handle: data.profile.twitter_handle || "",
           })
         }
       } catch (error) {
-        console.error("Failed to load dashboard data:", error)
+        console.error("Error fetching dashboard data:", error)
         toast({
           title: "Error",
           description: "Failed to load dashboard data",
           variant: "destructive",
         })
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
-    loadData()
-  }, [account, getAuthSession])
+    fetchDashboardData()
+  }, [account, isAuthenticated])
+
+  const handleInputChange = (field: keyof ProfileUpdateData, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  const handleAvatarUpload = (url: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      avatar_url: url,
+    }))
+  }
+
+  const handleSaveProfile = async () => {
+    if (!account || !isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please connect and authenticate your wallet first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const session = WalletAuth.getSession()
+    if (!session) {
+      toast({
+        title: "Session Expired",
+        description: "Please reconnect your wallet to authenticate",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const result = await updateProfile(account, formData, session)
+
+      if (result.success) {
+        setDashboardData((prev) => (prev ? { ...prev, profile: result.profile } : null))
+        toast({
+          title: "Profile Updated! 🎉",
+          description: "Your profile has been saved successfully",
+        })
+      }
+    } catch (error: any) {
+      console.error("Error saving profile:", error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save profile",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const handleDeleteCourse = async (courseId: string, courseTitle: string) => {
+    if (!account || !isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please connect and authenticate your wallet first",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!confirm(`Are you sure you want to delete "${courseTitle}"? This action cannot be undone.`)) {
       return
     }
 
-    try {
-      const session = getAuthSession()
-      if (!session) {
-        toast({
-          title: "Authentication Required",
-          description: "Please sign in with your wallet first.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      await deleteCourse(courseId, session)
-
-      // Refresh data
-      const dashboardData = await getDashboardData(session)
-      setData(dashboardData)
-
+    const session = WalletAuth.getSession()
+    if (!session) {
       toast({
-        title: "Course Deleted",
-        description: `"${courseTitle}" has been deleted successfully.`,
+        title: "Session Expired",
+        description: "Please reconnect your wallet to authenticate",
+        variant: "destructive",
       })
-    } catch (error) {
-      console.error("Failed to delete course:", error)
+      return
+    }
+
+    try {
+      const result = await deleteCourseSecure(courseId, session)
+
+      if (result.success) {
+        // Update local state
+        setDashboardData((prev) => {
+          if (!prev) return null
+          const updatedCourses = prev.courses.filter((course) => course.id !== courseId)
+          return {
+            ...prev,
+            courses: updatedCourses,
+            stats: {
+              ...prev.stats,
+              totalCourses: updatedCourses.length,
+              totalLessons: updatedCourses.reduce((sum, course) => sum + (course.lessons?.length || 0), 0),
+            },
+          }
+        })
+
+        toast({
+          title: "Course Deleted",
+          description: `"${result.title}" has been deleted successfully`,
+        })
+      }
+    } catch (error: any) {
+      console.error("Error deleting course:", error)
       toast({
         title: "Error",
-        description: "Failed to delete course",
+        description: error.message || "Failed to delete course",
         variant: "destructive",
       })
     }
   }
 
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!account) return
-
-    try {
-      const session = getAuthSession()
-      if (!session) {
-        toast({
-          title: "Authentication Required",
-          description: "Please sign in with your wallet first.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      await updateProfile(account, profileForm, session)
-
-      // Refresh data
-      const dashboardData = await getDashboardData(session)
-      setData(dashboardData)
-
-      setProfileDialogOpen(false)
-      toast({
-        title: "Profile Updated",
-        description: "Your profile has been updated successfully.",
-      })
-    } catch (error) {
-      console.error("Failed to update profile:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update profile",
-        variant: "destructive",
-      })
-    }
+  if (!isConnected) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="p-6">
+              <div className="text-center mb-4">
+                <User className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <CardTitle className="text-xl text-foreground mb-3">Connect Your Wallet</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground leading-relaxed">
+                  Please connect your wallet to access your dashboard
+                </CardDescription>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
-  if (loading) {
-    return <div className="text-center py-8">Loading dashboard...</div>
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="p-6">
+              <div className="text-center mb-4">
+                <User className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <CardTitle className="text-xl text-foreground mb-3">Authentication Required</CardTitle>
+                <CardDescription className="text-sm text-muted-foreground leading-relaxed">
+                  Please sign the authentication message to access your dashboard
+                </CardDescription>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
-  if (!data) {
-    return <div className="text-center py-8">Failed to load dashboard data</div>
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <span className="ml-2">Loading dashboard...</span>
+          </div>
+        </div>
+      </div>
+    )
   }
+
+  if (!dashboardData) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Failed to load dashboard data</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const { profile, courses, stats } = dashboardData
 
   return (
-    <div className="space-y-8">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.stats.totalCourses}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Lessons</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.stats.totalLessons}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Donations</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.stats.totalDonations.toFixed(4)} BNB</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Profile Settings */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-semibold">Your Courses</h2>
-        <div className="flex gap-2">
-          <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                Profile Settings
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Profile Settings</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleProfileUpdate} className="space-y-4">
-                <div>
-                  <Label htmlFor="display_name">Display Name</Label>
-                  <Input
-                    id="display_name"
-                    value={profileForm.display_name}
-                    onChange={(e) => setProfileForm({ ...profileForm, display_name: e.target.value })}
-                    placeholder="Your display name"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="avatar_url">Avatar URL</Label>
-                  <Input
-                    id="avatar_url"
-                    value={profileForm.avatar_url}
-                    onChange={(e) => setProfileForm({ ...profileForm, avatar_url: e.target.value })}
-                    placeholder="https://example.com/avatar.jpg"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="about_me">About Me</Label>
-                  <Textarea
-                    id="about_me"
-                    value={profileForm.about_me}
-                    onChange={(e) => setProfileForm({ ...profileForm, about_me: e.target.value })}
-                    placeholder="Tell us about yourself..."
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="website_url">Website URL</Label>
-                  <Input
-                    id="website_url"
-                    value={profileForm.website_url}
-                    onChange={(e) => setProfileForm({ ...profileForm, website_url: e.target.value })}
-                    placeholder="https://yourwebsite.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="twitter_handle">Twitter Handle</Label>
-                  <Input
-                    id="twitter_handle"
-                    value={profileForm.twitter_handle}
-                    onChange={(e) => setProfileForm({ ...profileForm, twitter_handle: e.target.value })}
-                    placeholder="@yourusername"
-                  />
-                </div>
-                <Button type="submit" className="w-full">
-                  Update Profile
+    <div className="min-h-screen bg-background">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2 leading-tight flex items-center gap-2">
+              Dashboard
+              {profile?.is_verified && <VerifiedBadge />}
+            </h1>
+            <p className="text-sm text-muted-foreground leading-relaxed">Manage your courses and profile</p>
+          </div>
+          <div className="flex gap-3">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="border border-border bg-transparent hover:bg-accent">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Profile Settings
                 </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Profile Settings</DialogTitle>
+                  <DialogDescription>Update your creator profile information</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  {/* Avatar Upload */}
+                  <div className="space-y-2">
+                    <Label>Profile Picture</Label>
+                    <ClickUploadAvatar
+                      currentAvatarUrl={formData.avatar_url}
+                      walletAddress={account || ""}
+                      onUploadComplete={handleAvatarUpload}
+                    />
+                  </div>
 
-          <Button asChild>
-            <Link href="/create-course">Create New Course</Link>
-          </Button>
-        </div>
-      </div>
+                  {/* Display Name */}
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      value={formData.display_name}
+                      onChange={(e) => handleInputChange("display_name", e.target.value)}
+                      placeholder="Your display name"
+                      className="border border-border focus:border-brand-primary bg-background"
+                    />
+                  </div>
 
-      {/* Courses Grid */}
-      {data.courses.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-12">
-            <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No courses yet</h3>
-            <p className="text-muted-foreground mb-4">Create your first course to start sharing your knowledge!</p>
-            <Button asChild>
-              <Link href="/create-course">Create Your First Course</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {data.courses.map((course) => (
-            <Card key={course.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg line-clamp-2">{course.title}</CardTitle>
-                    <CardDescription className="mt-2 line-clamp-3">
-                      {course.description || "No description provided"}
-                    </CardDescription>
+                  {/* About Me */}
+                  <div className="space-y-2">
+                    <Label htmlFor="about_me">About Me</Label>
+                    <Textarea
+                      id="about_me"
+                      value={formData.about_me}
+                      onChange={(e) => handleInputChange("about_me", e.target.value)}
+                      placeholder="Tell us about yourself..."
+                      rows={4}
+                      className="border border-border focus:border-brand-primary resize-none bg-background"
+                    />
+                  </div>
+
+                  {/* Website URL */}
+                  <div className="space-y-2">
+                    <Label htmlFor="website_url">Website</Label>
+                    <Input
+                      id="website_url"
+                      type="url"
+                      value={formData.website_url}
+                      onChange={(e) => handleInputChange("website_url", e.target.value)}
+                      placeholder="https://your-website.com"
+                      className="border border-border focus:border-brand-primary bg-background"
+                    />
+                  </div>
+
+                  {/* Twitter Handle */}
+                  <div className="space-y-2">
+                    <Label htmlFor="twitter_handle">Twitter Handle</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                        @
+                      </span>
+                      <Input
+                        id="twitter_handle"
+                        value={formData.twitter_handle}
+                        onChange={(e) => handleInputChange("twitter_handle", e.target.value)}
+                        placeholder="username"
+                        className="pl-8 border border-border focus:border-brand-primary bg-background"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      onClick={handleSaveProfile}
+                      disabled={isSaving}
+                      className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between mb-4">
-                  <Badge variant="secondary">{course.lessons?.length || 0} lessons</Badge>
-                  <span className="text-sm text-muted-foreground">
-                    {new Date(course.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button asChild size="sm" variant="outline" className="flex-1 bg-transparent">
-                    <Link href={`/courses/${course.id}`}>
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline" className="flex-1 bg-transparent">
-                    <Link href={`/dashboard/edit/${course.id}`}>
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
-                    </Link>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDeleteCourse(course.id, course.title)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+              </DialogContent>
+            </Dialog>
+            <Button asChild className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground">
+              <Link href="/create-course">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Course
+              </Link>
+            </Button>
+          </div>
         </div>
-      )}
+
+        {/* Stats Cards */}
+        <div className="grid gap-4 md:grid-cols-3 mb-8">
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Courses</CardTitle>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalCourses}</div>
+              <p className="text-xs text-muted-foreground">{stats.totalLessons} total lessons</p>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Lessons</CardTitle>
+              <Eye className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalLessons}</div>
+              <p className="text-xs text-muted-foreground">Across all courses</p>
+            </CardContent>
+          </Card>
+          <Card className="border border-border bg-card shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">This Month</CardTitle>
+              <Plus className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.createdThisMonth}</div>
+              <p className="text-xs text-muted-foreground">New courses created</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Courses Section */}
+        <Card className="border border-border bg-card shadow-sm">
+          <CardHeader className="p-6 pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
+                  <BookOpen className="w-5 h-5" />
+                  My Courses
+                </CardTitle>
+                <CardDescription className="text-sm text-muted-foreground">
+                  {courses.length} course{courses.length !== 1 ? "s" : ""} created
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {courses.length === 0 ? (
+              <div className="text-center py-12">
+                <BookOpen className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium text-foreground mb-2">No courses yet</h3>
+                <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                  Create your first course to start sharing your knowledge with the Web3 community.
+                </p>
+                <Button asChild className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground">
+                  <Link href="/create-course">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Course
+                  </Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {courses.map((course) => (
+                  <Card key={course.id} className="border border-border bg-background shadow-sm">
+                    <CardHeader className="p-4 pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-base font-semibold text-foreground line-clamp-2 leading-tight">
+                            {course.title}
+                          </CardTitle>
+                          {course.description && (
+                            <CardDescription className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                              {course.description}
+                            </CardDescription>
+                          )}
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-accent">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/edit/${course.id}`} className="cursor-pointer">
+                                <Edit3 className="h-4 w-4 mr-2" />
+                                Edit Course
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem asChild>
+                              <Link href={`/courses/${course.id}`} className="cursor-pointer">
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Course
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 cursor-pointer"
+                              onClick={() => handleDeleteCourse(course.id, course.title)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Course
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-0">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
+                        <span>
+                          {course.lessons.length} lesson{course.lessons.length !== 1 ? "s" : ""}
+                        </span>
+                        <span>Created {new Date(course.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          asChild
+                          size="sm"
+                          className="flex-1 h-8 text-xs bg-brand-primary hover:bg-brand-secondary text-primary-foreground"
+                        >
+                          <Link href={`/dashboard/edit/${course.id}`}>
+                            <Edit3 className="h-3 w-3 mr-1" />
+                            Edit
+                          </Link>
+                        </Button>
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 h-8 text-xs border border-border bg-transparent hover:bg-accent"
+                        >
+                          <Link href={`/courses/${course.id}`}>
+                            <Eye className="h-3 w-3 mr-1" />
+                            View
+                          </Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
