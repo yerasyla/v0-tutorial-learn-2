@@ -8,9 +8,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Client-side Supabase client - READ ONLY due to RLS policies
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
 
-// Note: This client can only READ data due to RLS policies
+// Note: This client can only read data due to RLS policies
 // All write operations must go through server actions with proper authentication
 
 export type Course = {

@@ -312,6 +312,9 @@ export function useWeb3() {
   return context
 }
 
+// Alias for backward-compatibility
+export { useWeb3 as useWallet }
+
 // Extend Window interface for TypeScript
 declare global {
   interface Window {
