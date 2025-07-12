@@ -8,12 +8,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Client-side Supabase client - READ ONLY due to RLS policies
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Note: This client can only READ data due to RLS policies
 // All write operations must go through server actions with proper authentication

@@ -1,3 +1,6 @@
+-- Drop existing function if it exists to avoid parameter name conflicts
+DROP FUNCTION IF EXISTS set_wallet_context(text);
+
 -- Enable Row Level Security on all tables
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lessons ENABLE ROW LEVEL SECURITY;
