@@ -19,11 +19,45 @@ import {
 import { Loader2, User, Edit3, Save, BookOpen, Plus, Settings, MoreHorizontal, Trash2, Eye } from "lucide-react"
 import { ClickUploadAvatar } from "@/components/click-upload-avatar"
 import { updateProfile, type ProfileUpdateData } from "@/app/actions/profile-actions"
-import { getDashboardData, deleteCourseSecure, type DashboardData } from "@/app/actions/dashboard-actions"
+import { getDashboardData, deleteCourseAction, type DashboardData } from "@/app/actions/dashboard-actions"
 import { VerifiedBadge } from "@/components/verified-badge"
 import { WalletAuth } from "@/lib/wallet-auth"
 import Link from "next/link"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+
+interface UserProfile {
+  id: string
+  wallet_address: string
+  display_name: string | null
+  avatar_url: string | null
+  about_me: string | null
+  website_url: string | null
+  twitter_handle: string | null
+  created_at: string
+  updated_at: string
+  is_verified: boolean
+  verification_date: string | null
+  verification_notes: string | null
+}
+
+interface Course {
+  id: string
+  title: string
+  description: string | null
+  creator_wallet: string
+  created_at: string
+  updated_at: string
+  lessons: Lesson[]
+}
+
+interface Lesson {
+  id: string
+  title: string
+  description: string | null
+  youtube_url: string
+  order_index: number
+  course_id: string
+}
 
 export function DashboardContent() {
   const { account, isConnected, isAuthenticated } = useWeb3()
@@ -127,7 +161,16 @@ export function DashboardContent() {
       const result = await updateProfile(account, formData, session)
 
       if (result.success) {
-        setDashboardData((prev) => (prev ? { ...prev, profile: result.profile } : null))
+        // Update local state
+        setDashboardData((prev) =>
+          prev
+            ? {
+                ...prev,
+                profile: result.profile,
+              }
+            : null,
+        )
+
         toast({
           title: "Profile Updated! 🎉",
           description: "Your profile has been saved successfully",
@@ -170,29 +213,28 @@ export function DashboardContent() {
     }
 
     try {
-      const result = await deleteCourseSecure(courseId, session)
+      await deleteCourseAction(courseId, session)
 
-      if (result.success) {
-        // Update local state
-        setDashboardData((prev) => {
-          if (!prev) return null
-          const updatedCourses = prev.courses.filter((course) => course.id !== courseId)
-          return {
-            ...prev,
-            courses: updatedCourses,
-            stats: {
-              ...prev.stats,
-              totalCourses: updatedCourses.length,
-              totalLessons: updatedCourses.reduce((sum, course) => sum + (course.lessons?.length || 0), 0),
-            },
-          }
-        })
+      // Update local state
+      setDashboardData((prev) =>
+        prev
+          ? {
+              ...prev,
+              courses: prev.courses.filter((course) => course.id !== courseId),
+              stats: {
+                ...prev.stats,
+                totalCourses: prev.stats.totalCourses - 1,
+                totalLessons:
+                  prev.stats.totalLessons - (prev.courses.find((c) => c.id === courseId)?.lessons.length || 0),
+              },
+            }
+          : null,
+      )
 
-        toast({
-          title: "Course Deleted",
-          description: `"${result.title}" has been deleted successfully`,
-        })
-      }
+      toast({
+        title: "Course Deleted",
+        description: `"${courseTitle}" has been deleted successfully`,
+      })
     } catch (error: any) {
       console.error("Error deleting course:", error)
       toast({
@@ -261,7 +303,7 @@ export function DashboardContent() {
       <div className="min-h-screen bg-background">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center py-12">
-            <p className="text-muted-foreground">Failed to load dashboard data</p>
+            <p>Failed to load dashboard data</p>
           </div>
         </div>
       </div>
@@ -401,27 +443,27 @@ export function DashboardContent() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalCourses}</div>
-              <p className="text-xs text-muted-foreground">{stats.totalLessons} total lessons</p>
+              <p className="text-xs text-muted-foreground">Courses created</p>
             </CardContent>
           </Card>
           <Card className="border border-border bg-card shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Lessons</CardTitle>
-              <Eye className="h-4 w-4 text-muted-foreground" />
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.totalLessons}</div>
-              <p className="text-xs text-muted-foreground">Across all courses</p>
+              <p className="text-xs text-muted-foreground">Lessons created</p>
             </CardContent>
           </Card>
           <Card className="border border-border bg-card shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">This Month</CardTitle>
-              <Plus className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Total Students</CardTitle>
+              <User className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.createdThisMonth}</div>
-              <p className="text-xs text-muted-foreground">New courses created</p>
+              <div className="text-2xl font-bold">{stats.totalStudents}</div>
+              <p className="text-xs text-muted-foreground">Students enrolled</p>
             </CardContent>
           </Card>
         </div>

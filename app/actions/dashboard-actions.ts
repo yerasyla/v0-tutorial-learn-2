@@ -9,7 +9,7 @@ export interface DashboardData {
   stats: {
     totalCourses: number
     totalLessons: number
-    createdThisMonth: number
+    totalStudents: number
   }
 }
 
@@ -32,11 +32,22 @@ function verifyWalletSession(session: WalletSession): string {
  * Get all dashboard data for authenticated user
  */
 export async function getDashboardData(session: WalletSession): Promise<DashboardData> {
-  console.log("getDashboardData called with session:", session?.address)
+  console.log("getDashboardData called with session:", {
+    address: session?.address,
+    hasSignature: !!session?.signature,
+  })
 
   try {
     // Verify session
-    const walletAddress = verifyWalletSession(session)
+    if (!session || !WalletAuth.verifySession(session)) {
+      throw new Error("Invalid or expired authentication session")
+    }
+
+    const walletAddress = session.address.toLowerCase()
+    console.log("Fetching dashboard data for wallet:", walletAddress)
+
+    // Set wallet context for this session
+    await supabaseAdmin.rpc("set_wallet_context", { wallet_address: walletAddress })
 
     // Fetch user profile
     const { data: profile, error: profileError } = await supabaseAdmin
@@ -47,7 +58,6 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
 
     if (profileError && profileError.code !== "PGRST116") {
       console.error("Error fetching profile:", profileError)
-      throw new Error(`Failed to fetch profile: ${profileError.message}`)
     }
 
     // Fetch user's courses with lessons
@@ -74,27 +84,18 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
 
     // Calculate stats
     const totalCourses = coursesWithSortedLessons.length
-    const totalLessons = coursesWithSortedLessons.reduce((sum, course) => sum + (course.lessons?.length || 0), 0)
-
-    // Count courses created this month
-    const thisMonth = new Date()
-    thisMonth.setDate(1)
-    thisMonth.setHours(0, 0, 0, 0)
-
-    const createdThisMonth = coursesWithSortedLessons.filter(
-      (course) => new Date(course.created_at) >= thisMonth,
-    ).length
+    const totalLessons = coursesWithSortedLessons.reduce((sum, course) => sum + course.lessons.length, 0)
 
     const stats = {
       totalCourses,
       totalLessons,
-      createdThisMonth,
+      totalStudents: 0, // TODO: Implement when we have enrollment system
     }
 
     console.log("Dashboard data fetched successfully:", {
-      hasProfile: !!profile,
+      profileExists: !!profile,
       coursesCount: coursesWithSortedLessons.length,
-      stats,
+      totalLessons,
     })
 
     return {
@@ -102,7 +103,7 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
       courses: coursesWithSortedLessons,
       stats,
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in getDashboardData:", error)
     throw error
   }
@@ -158,6 +159,60 @@ export async function deleteCourseSecure(courseId: string, session: WalletSessio
     return { success: true, title: existingCourse.title }
   } catch (error) {
     console.error("Error in deleteCourseSecure:", error)
+    throw error
+  }
+}
+
+export async function deleteCourseAction(courseId: string, session: WalletSession) {
+  console.log("deleteCourseAction called with:", {
+    courseId,
+    sessionAddress: session?.address,
+  })
+
+  try {
+    // Verify session
+    if (!session || !WalletAuth.verifySession(session)) {
+      throw new Error("Invalid or expired authentication session")
+    }
+
+    const walletAddress = session.address.toLowerCase()
+
+    // Set wallet context
+    await supabaseAdmin.rpc("set_wallet_context", { wallet_address: walletAddress })
+
+    // Verify ownership
+    const { data: course, error: fetchError } = await supabaseAdmin
+      .from("courses")
+      .select("creator_wallet")
+      .eq("id", courseId)
+      .single()
+
+    if (fetchError) {
+      throw new Error(`Course not found: ${fetchError.message}`)
+    }
+
+    if (course.creator_wallet.toLowerCase() !== walletAddress) {
+      throw new Error("Unauthorized: You can only delete your own courses")
+    }
+
+    // Delete lessons first
+    const { error: lessonsError } = await supabaseAdmin.from("lessons").delete().eq("course_id", courseId)
+
+    if (lessonsError) {
+      throw new Error(`Failed to delete lessons: ${lessonsError.message}`)
+    }
+
+    // Delete course
+    const { error: courseError } = await supabaseAdmin.from("courses").delete().eq("id", courseId)
+
+    if (courseError) {
+      throw new Error(`Failed to delete course: ${courseError.message}`)
+    }
+
+    console.log("Course deleted successfully:", courseId)
+    return { success: true }
+  } catch (error: any) {
+    console.error("Error in deleteCourseAction:", error)
     throw error
   }
 }

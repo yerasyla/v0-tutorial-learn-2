@@ -3,7 +3,11 @@ import { createClient } from "@supabase/supabase-js"
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Client-side Supabase client with limited permissions
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables")
+}
+
+// Client-side Supabase client - READ ONLY due to RLS policies
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
@@ -11,12 +15,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
-// Note: This client should only be used for READ operations
-// All write operations should go through server actions
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase environment variables")
-}
+// Note: This client can only READ data due to RLS policies
+// All write operations must go through server actions with proper authentication
 
 export type Course = {
   id: string
@@ -79,35 +79,5 @@ export const testConnection = async () => {
   } catch (error) {
     console.error("Supabase connection error:", error)
     return false
-  }
-}
-
-// Verification functions
-export const verifyCreator = async (walletAddress: string, notes?: string) => {
-  try {
-    const { error } = await supabase.rpc("verify_creator", {
-      creator_wallet: walletAddress,
-      notes: notes || null,
-    })
-
-    if (error) throw error
-    return { success: true }
-  } catch (error) {
-    console.error("Error verifying creator:", error)
-    return { success: false, error }
-  }
-}
-
-export const unverifyCreator = async (walletAddress: string) => {
-  try {
-    const { error } = await supabase.rpc("unverify_creator", {
-      creator_wallet: walletAddress,
-    })
-
-    if (error) throw error
-    return { success: true }
-  } catch (error) {
-    console.error("Error unverifying creator:", error)
-    return { success: false, error }
   }
 }

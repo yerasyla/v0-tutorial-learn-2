@@ -4,6 +4,11 @@ import { supabaseAdmin } from "@/lib/supabase-admin"
 import { WalletAuth, type WalletSession } from "@/lib/wallet-auth"
 import { revalidatePath } from "next/cache"
 
+export interface CourseUpdateData {
+  title: string
+  description: string
+}
+
 export interface LessonUpdateData {
   id?: string
   title: string
@@ -16,7 +21,15 @@ export interface LessonUpdateData {
  * Verify wallet session and extract wallet address
  */
 function verifyWalletSession(session: WalletSession): string {
-  console.log("Verifying wallet session:", { address: session.address, timestamp: session.timestamp })
+  console.log("Verifying wallet session:", {
+    address: session?.address,
+    timestamp: session?.timestamp,
+    hasSignature: !!session?.signature,
+  })
+
+  if (!session) {
+    throw new Error("No authentication session provided")
+  }
 
   // Verify signature
   if (!WalletAuth.verifySession(session)) {
@@ -31,12 +44,19 @@ function verifyWalletSession(session: WalletSession): string {
  * Get course for editing
  */
 export async function getCourseForEdit(courseId: string, session: WalletSession) {
-  console.log("getCourseForEdit called with:", { courseId, sessionAddress: session?.address })
+  console.log("getCourseForEdit called with:", {
+    courseId,
+    sessionAddress: session?.address,
+  })
 
   try {
     // Verify session
-    const walletAddress = verifyWalletSession(session)
+    const authenticatedWallet = verifyWalletSession(session)
 
+    // Set wallet context
+    await supabaseAdmin.rpc("set_wallet_context", { wallet_address: authenticatedWallet })
+
+    // Fetch course with lessons
     const { data: course, error } = await supabaseAdmin
       .from("courses")
       .select(`
@@ -44,32 +64,24 @@ export async function getCourseForEdit(courseId: string, session: WalletSession)
         lessons (*)
       `)
       .eq("id", courseId)
+      .eq("creator_wallet", authenticatedWallet)
       .single()
 
-    console.log("Course fetch result:", { course, error })
-
     if (error) {
-      console.error("Error fetching course:", error)
-      throw error
-    }
-
-    if (!course) {
-      throw new Error("Course not found")
-    }
-
-    // Check if user owns this course
-    if (course.creator_wallet.toLowerCase() !== walletAddress) {
-      throw new Error("Unauthorized: You can only edit your own courses")
+      if (error.code === "PGRST116") {
+        throw new Error("Course not found or you don't have permission to edit it")
+      }
+      throw new Error(`Failed to fetch course: ${error.message}`)
     }
 
     // Sort lessons by order_index
-    const sortedLessons = course.lessons?.sort((a: any, b: any) => a.order_index - b.order_index) || []
-
-    return {
-      ...course,
-      lessons: sortedLessons,
+    if (course.lessons) {
+      course.lessons.sort((a: any, b: any) => a.order_index - b.order_index)
     }
-  } catch (error) {
+
+    console.log("Course fetched successfully for editing")
+    return course
+  } catch (error: any) {
     console.error("Error in getCourseForEdit:", error)
     throw error
   }
@@ -80,134 +92,83 @@ export async function getCourseForEdit(courseId: string, session: WalletSession)
  */
 export async function updateCourse(
   courseId: string,
-  courseData: { title: string; description?: string },
+  courseData: CourseUpdateData,
   lessons: LessonUpdateData[],
   session: WalletSession,
 ) {
   console.log("updateCourse called with:", {
     courseId,
-    courseData,
-    lessons: lessons.length,
+    title: courseData.title,
+    lessonsCount: lessons.length,
     sessionAddress: session?.address,
   })
 
   try {
     // Verify session
-    const walletAddress = verifyWalletSession(session)
+    const authenticatedWallet = verifyWalletSession(session)
 
-    // First, verify the user owns this course
-    const { data: existingCourse, error: courseCheckError } = await supabaseAdmin
+    // Set wallet context
+    await supabaseAdmin.rpc("set_wallet_context", { wallet_address: authenticatedWallet })
+
+    // Verify ownership
+    const { data: existingCourse, error: fetchError } = await supabaseAdmin
       .from("courses")
       .select("creator_wallet")
       .eq("id", courseId)
       .single()
 
-    console.log("Course ownership check:", { existingCourse, courseCheckError })
-
-    if (courseCheckError) {
-      throw new Error(`Failed to verify course ownership: ${courseCheckError.message}`)
+    if (fetchError) {
+      throw new Error(`Course not found: ${fetchError.message}`)
     }
 
-    if (!existingCourse || existingCourse.creator_wallet.toLowerCase() !== walletAddress) {
+    if (existingCourse.creator_wallet.toLowerCase() !== authenticatedWallet) {
       throw new Error("Unauthorized: You can only edit your own courses")
     }
 
-    // Update course details
-    const { error: courseUpdateError } = await supabaseAdmin
+    // Update course
+    const { error: courseError } = await supabaseAdmin
       .from("courses")
       .update({
         title: courseData.title,
-        description: courseData.description || null,
+        description: courseData.description,
         updated_at: new Date().toISOString(),
       })
       .eq("id", courseId)
 
-    console.log("Course update result:", { courseUpdateError })
-
-    if (courseUpdateError) {
-      throw new Error(`Failed to update course: ${courseUpdateError.message}`)
+    if (courseError) {
+      throw new Error(`Failed to update course: ${courseError.message}`)
     }
 
-    // Get existing lessons to determine what to update/delete
-    const { data: existingLessons, error: lessonsError } = await supabaseAdmin
-      .from("lessons")
-      .select("*")
-      .eq("course_id", courseId)
+    // Delete existing lessons
+    const { error: deleteError } = await supabaseAdmin.from("lessons").delete().eq("course_id", courseId)
 
-    console.log("Existing lessons:", { existingLessons, lessonsError })
-
-    if (lessonsError) {
-      throw new Error(`Failed to fetch existing lessons: ${lessonsError.message}`)
+    if (deleteError) {
+      throw new Error(`Failed to delete existing lessons: ${deleteError.message}`)
     }
 
-    const existingLessonIds = new Set(existingLessons?.map((l) => l.id) || [])
-    const updatedLessonIds = new Set(lessons.filter((l) => l.id).map((l) => l.id))
-
-    // Delete lessons that are no longer in the update
-    const lessonsToDelete = existingLessons?.filter((l) => !updatedLessonIds.has(l.id)) || []
-
-    if (lessonsToDelete.length > 0) {
-      console.log(
-        "Deleting lessons:",
-        lessonsToDelete.map((l) => l.id),
-      )
-
-      const { error: deleteError } = await supabaseAdmin
-        .from("lessons")
-        .delete()
-        .in(
-          "id",
-          lessonsToDelete.map((l) => l.id),
-        )
-
-      if (deleteError) {
-        console.error("Error deleting lessons:", deleteError)
-        throw new Error(`Failed to delete lessons: ${deleteError.message}`)
-      }
-    }
-
-    // Process each lesson (update existing or insert new)
-    for (const lesson of lessons) {
-      const lessonData = {
+    // Insert new lessons
+    if (lessons.length > 0) {
+      const lessonsToInsert = lessons.map((lesson) => ({
+        course_id: courseId,
         title: lesson.title,
         youtube_url: lesson.youtube_url,
         order_index: lesson.order_index,
-        course_id: courseId,
-      }
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }))
 
-      if (lesson.id && existingLessonIds.has(lesson.id)) {
-        // Update existing lesson
-        console.log("Updating lesson:", lesson.id)
+      const { error: insertError } = await supabaseAdmin.from("lessons").insert(lessonsToInsert)
 
-        const { error: updateError } = await supabaseAdmin.from("lessons").update(lessonData).eq("id", lesson.id)
-
-        if (updateError) {
-          console.error("Error updating lesson:", updateError)
-          throw new Error(`Failed to update lesson "${lesson.title}": ${updateError.message}`)
-        }
-      } else {
-        // Insert new lesson
-        console.log("Inserting new lesson:", lesson.title)
-
-        const { error: insertError } = await supabaseAdmin.from("lessons").insert([lessonData])
-
-        if (insertError) {
-          console.error("Error inserting lesson:", insertError)
-          throw new Error(`Failed to create lesson "${lesson.title}": ${insertError.message}`)
-        }
+      if (insertError) {
+        throw new Error(`Failed to insert lessons: ${insertError.message}`)
       }
     }
 
-    console.log("Course update completed successfully")
-
-    // Revalidate relevant paths
-    revalidatePath(`/courses/${courseId}`)
-    revalidatePath(`/dashboard/edit/${courseId}`)
+    console.log("Course updated successfully")
     revalidatePath("/dashboard")
-    revalidatePath("/courses")
-
+    revalidatePath(`/courses/${courseId}`)
     return { success: true }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in updateCourse:", error)
     throw error
   }
