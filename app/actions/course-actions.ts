@@ -416,3 +416,64 @@ export async function getCourseWithLessons(courseId: string) {
     throw error
   }
 }
+
+export async function createCourseWithLessons(
+  courseData: { title: string; description: string | null },
+  lessons: Array<{
+    title: string
+    description: string
+    youtube_url: string
+  }>,
+  session: WalletSession,
+) {
+  console.log("createCourseWithLessons called:", {
+    title: courseData.title,
+    lessons: lessons.length,
+    sessionAddress: session?.address,
+  })
+
+  /* 1️⃣  verify wallet session */
+  const wallet = verifyWalletSession(session)
+
+  /* 2️⃣  insert course */
+  const { data: course, error: courseErr } = await supabaseAdmin
+    .from("courses")
+    .insert({
+      title: courseData.title,
+      description: courseData.description,
+      creator_wallet: wallet,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single()
+
+  if (courseErr) {
+    console.error(courseErr)
+    return { success: false, error: courseErr.message }
+  }
+
+  /* 3️⃣  insert lessons (ordered) */
+  const lessonsToInsert = lessons.map((l, i) => ({
+    course_id: course.id,
+    title: l.title,
+    description: l.description || null,
+    youtube_url: l.youtube_url,
+    order_index: i,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }))
+
+  const { error: lessonErr } = await supabaseAdmin.from("lessons").insert(lessonsToInsert)
+
+  if (lessonErr) {
+    console.error(lessonErr)
+    return { success: false, error: lessonErr.message }
+  }
+
+  /* 4️⃣  cache busting */
+  revalidatePath("/courses")
+  revalidatePath("/dashboard")
+
+  return { success: true, courseId: course.id }
+}

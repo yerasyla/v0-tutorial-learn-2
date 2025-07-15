@@ -124,4 +124,15 @@ By signing this message, you authenticate your wallet for secure access to the p
     const session = this.getSession()
     return session ? this.verifySession(session) : false
   }
+
+  /**
+   * Return a verified session object (or null) for use in API / Server Actions.
+   * This mirrors the older helper that some pages still call.
+   */
+  static getSessionForAPI(): WalletSession | null {
+    const session = this.getSession()
+    return session && this.verifySession(session) ? session : null
+  }
 }
+
+export const getSessionForAPI = WalletAuth.getSessionForAPI.bind(WalletAuth)
