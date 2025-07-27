@@ -7,16 +7,13 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error("Missing Supabase environment variables for admin client")
 }
 
-// Server-side admin client with full permissions
+// Admin client with service role key - can bypass RLS
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
 })
-
-// Export alias for backward compatibility
-export const supabase = supabaseAdmin
 
 // Test admin connection
 export const testAdminConnection = async () => {

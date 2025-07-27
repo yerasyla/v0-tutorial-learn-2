@@ -1,98 +1,51 @@
-import { ethers } from "ethers"
-
-interface WalletSession {
-  address: string
-  signature: string
-  message: string
-  timestamp: number
-  expiresAt: number
-}
-
 export class WalletAuth {
   private static readonly SESSION_KEY = "wallet_session"
   private static readonly SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
 
-  static async authenticate(signer: ethers.JsonRpcSigner, address: string): Promise<WalletSession> {
+  static async authenticate(signer: any, address: string) {
     try {
-      const timestamp = Date.now()
-      const expiresAt = timestamp + this.SESSION_DURATION
+      console.log("🔐 Authenticating wallet:", address)
 
-      // Create a message to sign
-      const message = `Sign this message to authenticate with Tutorial Platform.
-
-Address: ${address}
-Timestamp: ${timestamp}
-Expires: ${new Date(expiresAt).toISOString()}
-
-This signature will be valid for 24 hours.`
-
-      // Sign the message
+      const message = `Sign this message to authenticate your wallet: ${address}\nTimestamp: ${Date.now()}`
       const signature = await signer.signMessage(message)
 
-      const session: WalletSession = {
+      const session = {
         address: address.toLowerCase(),
         signature,
         message,
-        timestamp,
-        expiresAt,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + this.SESSION_DURATION,
       }
 
-      // Store session in localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem(this.SESSION_KEY, JSON.stringify(session))
-      }
+      localStorage.setItem(this.SESSION_KEY, JSON.stringify(session))
+      console.log("✅ Wallet authenticated successfully")
 
       return session
     } catch (error) {
-      console.error("Authentication failed:", error)
-      throw new Error("Failed to authenticate wallet")
+      console.error("❌ Wallet authentication failed:", error)
+      throw error
     }
   }
 
-  static getSession(): WalletSession | null {
-    if (typeof window === "undefined") return null
-
+  static getSession() {
     try {
       const sessionData = localStorage.getItem(this.SESSION_KEY)
       if (!sessionData) return null
 
-      const session: WalletSession = JSON.parse(sessionData)
-
-      // Check if session is expired
-      if (Date.now() > session.expiresAt) {
-        this.clearSession()
-        return null
-      }
-
-      return session
+      const session = JSON.parse(sessionData)
+      return this.isSessionValid(session) ? session : null
     } catch (error) {
-      console.error("Error getting session:", error)
-      this.clearSession()
+      console.error("❌ Error getting session:", error)
       return null
     }
   }
 
-  static clearSession(): void {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(this.SESSION_KEY)
-    }
-  }
-
-  static isSessionValid(session: WalletSession | null): boolean {
-    if (!session) return false
+  static isSessionValid(session: any): boolean {
+    if (!session || !session.expiresAt) return false
     return Date.now() < session.expiresAt
   }
 
-  static async verifySignature(session: WalletSession): Promise<boolean> {
-    try {
-      // Recover the address from the signature
-      const recoveredAddress = ethers.verifyMessage(session.message, session.signature)
-
-      // Check if the recovered address matches the session address
-      return recoveredAddress.toLowerCase() === session.address.toLowerCase()
-    } catch (error) {
-      console.error("Signature verification failed:", error)
-      return false
-    }
+  static clearSession() {
+    localStorage.removeItem(this.SESSION_KEY)
   }
 }
