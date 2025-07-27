@@ -1,28 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-import { WalletAuth } from "@/lib/wallet-auth"
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+import { supabaseAdmin } from "@/lib/supabase-admin"
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const courseId = searchParams.get("course_id") || searchParams.get("courseId")
 
+    console.log("📊 Fetching donations for course:", courseId)
+
     if (!courseId) {
+      console.error("❌ Course ID is required")
       return NextResponse.json({ error: "Course ID is required" }, { status: 400 })
     }
 
-    console.log("📊 Fetching donations for course:", courseId)
-
+    // Fetch donations for the course
     const { data: donations, error } = await supabaseAdmin
       .from("donations")
       .select("*")
@@ -31,14 +22,21 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("❌ Error fetching donations:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: "Failed to fetch donations" }, { status: 500 })
     }
 
-    console.log("✅ Donations fetched:", donations?.length || 0)
+    console.log("✅ Fetched donations:", donations?.length || 0)
+
+    // Calculate total amount
+    const totalAmount =
+      donations?.reduce((sum, donation) => {
+        return sum + Number.parseFloat(donation.amount || "0")
+      }, 0) || 0
 
     return NextResponse.json({
       donations: donations || [],
-      count: donations?.length || 0,
+      totalAmount: totalAmount.toString(),
+      donorCount: donations?.length || 0,
     })
   } catch (error) {
     console.error("❌ API Error:", error)
@@ -49,42 +47,46 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { course_id, donor_wallet, amount, tx_hash, session } = body
+    console.log("💰 Saving donation:", body)
 
-    console.log("💾 Saving donation:", { course_id, donor_wallet, amount, tx_hash })
+    const { courseId, donorWallet, amount, txHash } = body
 
     // Validate required fields
-    if (!course_id || !donor_wallet || !amount || !tx_hash) {
+    if (!courseId || !donorWallet || !amount || !txHash) {
+      console.error("❌ Missing required fields:", { courseId, donorWallet, amount, txHash })
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    // Validate session if provided
-    if (session && !WalletAuth.isSessionValid(session)) {
-      return NextResponse.json({ error: "Invalid or expired session" }, { status: 401 })
+    // Check if donation with this tx_hash already exists
+    const { data: existing } = await supabaseAdmin.from("donations").select("id").eq("tx_hash", txHash).single()
+
+    if (existing) {
+      console.log("⚠️ Donation already exists for tx_hash:", txHash)
+      return NextResponse.json({ error: "Donation already recorded" }, { status: 409 })
     }
 
-    // Insert donation using service role
-    const { data, error } = await supabaseAdmin
+    // Insert donation
+    const { data: donation, error } = await supabaseAdmin
       .from("donations")
       .insert({
-        course_id,
-        donor_wallet: donor_wallet.toLowerCase(),
-        amount,
-        tx_hash,
+        course_id: courseId,
+        donor_wallet: donorWallet.toLowerCase(),
+        amount: amount.toString(),
+        tx_hash: txHash,
       })
       .select()
       .single()
 
     if (error) {
       console.error("❌ Error saving donation:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: "Failed to save donation" }, { status: 500 })
     }
 
-    console.log("✅ Donation saved:", data)
+    console.log("✅ Donation saved successfully:", donation.id)
 
     return NextResponse.json({
       success: true,
-      donation: data,
+      donation,
     })
   } catch (error) {
     console.error("❌ API Error:", error)
