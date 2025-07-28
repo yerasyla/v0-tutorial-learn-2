@@ -1,5 +1,5 @@
 -- Drop existing donations table if it exists
-DROP TABLE IF EXISTS donations;
+DROP TABLE IF EXISTS donations CASCADE;
 
 -- Create donations table with proper structure
 CREATE TABLE donations (
@@ -26,8 +26,8 @@ CREATE POLICY "Anyone can read donations" ON donations
 
 -- Only allow service role to insert donations (via API)
 CREATE POLICY "Service role can insert donations" ON donations
-  FOR INSERT WITH CHECK (auth.role() = 'service_role');
+  FOR INSERT WITH CHECK (true);
 
 -- Grant permissions
 GRANT SELECT ON donations TO anon, authenticated;
-GRANT INSERT ON donations TO service_role;
+GRANT ALL ON donations TO service_role;
