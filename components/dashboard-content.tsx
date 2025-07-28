@@ -1,17 +1,11 @@
 "use client"
-
-import type React from "react"
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { updateProfile } from "@/app/actions/profile-actions"
 import { deleteCourseAction, getDashboardData, type DashboardData } from "@/app/actions/dashboard-actions"
 import { WalletAuth } from "@/lib/wallet-auth"
+import { useWeb3 } from "@/contexts/web3-context"
 import { BookOpen, Users, Plus, Edit, Trash2, Eye, Settings, AlertCircle, CheckCircle, User } from "lucide-react"
 import Link from "next/link"
 import { toast } from "@/hooks/use-toast"
@@ -21,59 +15,11 @@ interface DashboardContentProps {
 }
 
 export default function DashboardContent({ initialData }: DashboardContentProps) {
+  const { account } = useWeb3()
   const [dashboardData, setDashboardData] = useState<DashboardData>(initialData)
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false)
-  const [profileForm, setProfileForm] = useState({
-    display_name: initialData.profile?.display_name || "",
-    about_me: initialData.profile?.about_me || "",
-    website_url: initialData.profile?.website_url || "",
-    twitter_handle: initialData.profile?.twitter_handle || "",
-  })
-  const [profileLoading, setProfileLoading] = useState(false)
   const [deletingCourse, setDeletingCourse] = useState<string | null>(null)
 
   const { profile, courses, stats } = dashboardData
-
-  // Handle profile update
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setProfileLoading(true)
-
-    try {
-      const session = WalletAuth.getSession()
-      if (!session) {
-        throw new Error("No valid authentication session")
-      }
-
-      const formData = new FormData()
-      formData.append("display_name", profileForm.display_name)
-      formData.append("about_me", profileForm.about_me)
-      formData.append("website_url", profileForm.website_url)
-      formData.append("twitter_handle", profileForm.twitter_handle)
-
-      await updateProfile(formData, session)
-
-      toast({
-        title: "Profile Updated",
-        description: "Your profile has been updated successfully.",
-      })
-
-      setProfileDialogOpen(false)
-
-      // Reload dashboard data
-      const data = await getDashboardData(session)
-      setDashboardData(data)
-    } catch (error: any) {
-      console.error("Error updating profile:", error)
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update profile",
-        variant: "destructive",
-      })
-    } finally {
-      setProfileLoading(false)
-    }
-  }
 
   // Handle course deletion
   const handleDeleteCourse = async (courseId: string, courseTitle: string) => {
@@ -86,7 +32,7 @@ export default function DashboardContent({ initialData }: DashboardContentProps)
     try {
       const session = WalletAuth.getSession()
       if (!session) {
-        throw new Error("No valid authentication session")
+        throw new Error("No valid authentication session. Please reconnect your wallet.")
       }
 
       await deleteCourseAction(courseId, session)
@@ -120,67 +66,12 @@ export default function DashboardContent({ initialData }: DashboardContentProps)
           <p className="text-muted-foreground">Welcome back, {profile?.display_name || "Creator"}</p>
         </div>
         <div className="flex gap-2">
-          <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                Profile Settings
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Profile Settings</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleProfileUpdate} className="space-y-4">
-                <div>
-                  <Label htmlFor="display_name">Display Name</Label>
-                  <Input
-                    id="display_name"
-                    value={profileForm.display_name}
-                    onChange={(e) => setProfileForm({ ...profileForm, display_name: e.target.value })}
-                    placeholder="Your display name"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="about_me">About Me</Label>
-                  <Textarea
-                    id="about_me"
-                    value={profileForm.about_me}
-                    onChange={(e) => setProfileForm({ ...profileForm, about_me: e.target.value })}
-                    placeholder="Tell us about yourself"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="website_url">Website</Label>
-                  <Input
-                    id="website_url"
-                    type="url"
-                    value={profileForm.website_url}
-                    onChange={(e) => setProfileForm({ ...profileForm, website_url: e.target.value })}
-                    placeholder="https://yourwebsite.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="twitter_handle">Twitter Handle</Label>
-                  <Input
-                    id="twitter_handle"
-                    value={profileForm.twitter_handle}
-                    onChange={(e) => setProfileForm({ ...profileForm, twitter_handle: e.target.value })}
-                    placeholder="@yourusername"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setProfileDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={profileLoading}>
-                    {profileLoading ? "Saving..." : "Save Changes"}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/creator/${account?.toLowerCase()}`}>
+              <Settings className="h-4 w-4 mr-2" />
+              Profile Settings
+            </Link>
+          </Button>
           <Button asChild>
             <Link href="/create-course">
               <Plus className="h-4 w-4 mr-2" />
