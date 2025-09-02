@@ -16,8 +16,11 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light")
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
+
     // Load theme from localStorage on mount
     const savedTheme = localStorage.getItem("tutorial-theme") as Theme
     if (savedTheme && (savedTheme === "light" || savedTheme === "dark")) {
@@ -30,6 +33,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
+    if (!mounted) return
+
     // Save theme to localStorage and update document class
     localStorage.setItem("tutorial-theme", theme)
 
@@ -40,7 +45,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       document.documentElement.classList.add("light")
       document.documentElement.classList.remove("dark")
     }
-  }, [theme])
+  }, [theme, mounted])
 
   const toggleTheme = () => {
     setThemeState((prev) => (prev === "light" ? "dark" : "light"))
@@ -48,6 +53,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme)
+  }
+
+  if (!mounted) {
+    return (
+      <ThemeContext.Provider
+        value={{
+          theme: "light",
+          toggleTheme: () => {},
+          setTheme: () => {},
+          isDark: false,
+        }}
+      >
+        {children}
+      </ThemeContext.Provider>
+    )
   }
 
   return (
