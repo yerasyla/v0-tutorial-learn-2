@@ -19,9 +19,14 @@ const MoonIcon = () => (
 export function ThemeToggle() {
   const { theme, toggleTheme, isDark } = useTheme()
 
+  const handleToggle = () => {
+    console.log("[v0] Theme toggle button clicked, current isDark:", isDark)
+    toggleTheme()
+  }
+
   return (
     <Button
-      onClick={toggleTheme}
+      onClick={handleToggle}
       variant="ghost"
       size="sm"
       className="h-10 w-10 p-0 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

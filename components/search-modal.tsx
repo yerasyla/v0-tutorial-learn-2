@@ -113,7 +113,10 @@ function highlightText(text: string, query: string): React.ReactNode {
 
     // Add highlighted text
     result.push(
-      <mark key={index} className="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">
+      <mark
+        key={index}
+        className="bg-brand-secondary/20 dark:bg-brand-secondary/30 text-brand-primary dark:text-brand-secondary px-0.5 rounded"
+      >
         {text.slice(group.start, group.end + 1)}
       </mark>,
     )

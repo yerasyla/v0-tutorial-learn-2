@@ -35,23 +35,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!mounted) return
 
+    console.log("[v0] Theme changing to:", theme)
+
     // Save theme to localStorage and update document class
     localStorage.setItem("tutorial-theme", theme)
 
     if (theme === "dark") {
       document.documentElement.classList.add("dark")
       document.documentElement.classList.remove("light")
+      console.log("[v0] Applied dark theme classes")
     } else {
       document.documentElement.classList.add("light")
       document.documentElement.classList.remove("dark")
+      console.log("[v0] Applied light theme classes")
     }
   }, [theme, mounted])
 
   const toggleTheme = () => {
+    console.log("[v0] Theme toggle clicked, current theme:", theme)
     setThemeState((prev) => (prev === "light" ? "dark" : "light"))
   }
 
   const setTheme = (newTheme: Theme) => {
+    console.log("[v0] Setting theme to:", newTheme)
     setThemeState(newTheme)
   }
 
@@ -65,7 +71,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           isDark: false,
         }}
       >
-        {children}
+        <div style={{ visibility: "hidden" }}>{children}</div>
       </ThemeContext.Provider>
     )
   }
