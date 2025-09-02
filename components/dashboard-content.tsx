@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { deleteCourseAction, getDashboardData, type DashboardData } from "@/app/actions/dashboard-actions"
-import { SolanaAuth } from "@/lib/solana-auth"
-import { useSolana } from "@/contexts/solana-context"
+import { WalletAuth } from "@/lib/wallet-auth"
+import { useWeb3 } from "@/contexts/web3-context"
 import { BookOpen, Users, Plus, Edit, Trash2, Eye, Settings, AlertCircle, CheckCircle, User } from "lucide-react"
 import Link from "next/link"
 import { toast } from "@/hooks/use-toast"
@@ -15,7 +15,7 @@ interface DashboardContentProps {
 }
 
 export default function DashboardContent({ initialData }: DashboardContentProps) {
-  const { address } = useSolana()
+  const { account } = useWeb3()
   const [dashboardData, setDashboardData] = useState<DashboardData>(initialData)
   const [deletingCourse, setDeletingCourse] = useState<string | null>(null)
 
@@ -30,7 +30,7 @@ export default function DashboardContent({ initialData }: DashboardContentProps)
     setDeletingCourse(courseId)
 
     try {
-      const session = SolanaAuth.getSession()
+      const session = WalletAuth.getSession()
       if (!session) {
         throw new Error("No valid authentication session. Please reconnect your wallet.")
       }
@@ -67,7 +67,7 @@ export default function DashboardContent({ initialData }: DashboardContentProps)
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href={`/creator/${address?.toLowerCase()}`}>
+            <Link href={`/creator/${account?.toLowerCase()}`}>
               <Settings className="h-4 w-4 mr-2" />
               Profile Settings
             </Link>

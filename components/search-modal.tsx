@@ -276,26 +276,29 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
       setIsLoading(true)
 
       try {
+        // Search courses with lessons
         const { data: courses, error: courseError } = await supabase
-          .from("courses_sol")
+          .from("courses")
           .select(`
           *,
-          lessons_sol (*)
+          lessons (*)
         `)
           .order("created_at", { ascending: false })
 
         if (courseError) throw courseError
 
+        // Search lessons with courses
         const { data: lessons, error: lessonError } = await supabase
-          .from("lessons_sol")
+          .from("lessons")
           .select(`
           *,
-          courses_sol (*)
+          courses (*)
         `)
           .order("order_index", { ascending: true })
 
         if (lessonError) throw lessonError
 
+        // Score and filter courses
         const scoredCourses = (courses || [])
           .map((course) => {
             const titleMatch = fuzzyMatch(course.title, query)
@@ -314,12 +317,12 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
             return {
               ...course,
-              lessons: course.lessons_sol || [], // Map lessons_sol to lessons for compatibility
               relevanceScore,
             }
           })
           .filter((course) => course.relevanceScore > 0)
 
+        // Score and filter lessons
         const scoredLessons = (lessons || [])
           .map((lesson) => {
             const titleMatch = fuzzyMatch(lesson.title, query)
@@ -343,7 +346,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
 
             return {
               ...lesson,
-              course: lesson.courses_sol, // Map courses_sol to course for compatibility
+              course: lesson.courses,
               relevanceScore,
             }
           })
@@ -353,12 +356,13 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         scoredCourses.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
         scoredLessons.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
 
+        // Fetch creator profiles for courses
         const topCourses = scoredCourses.slice(0, 50)
         const coursesWithProfiles = await Promise.all(
           topCourses.map(async (course) => {
             try {
               const { data: profileData, error: profileError } = await supabase
-                .from("user_profiles_sol")
+                .from("user_profiles")
                 .select("*")
                 .eq("wallet_address", course.creator_wallet.toLowerCase())
                 .single()
@@ -380,12 +384,13 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
           }),
         )
 
+        // Fetch creator profiles for lessons
         const topLessons = scoredLessons.slice(0, 50)
         const lessonsWithProfiles = await Promise.all(
           topLessons.map(async (lesson) => {
             try {
               const { data: profileData, error: profileError } = await supabase
-                .from("user_profiles_sol")
+                .from("user_profiles")
                 .select("*")
                 .eq("wallet_address", lesson.course.creator_wallet.toLowerCase())
                 .single()
@@ -579,9 +584,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
       if (lessons.length === 0) return "/placeholder.svg?height=120&width=160&text=No+Video"
 
       const firstLesson = lessons.sort((a, b) => a.order_index - b.order_index)[0]
-      // Handle both youtube_url (old) and video_url (new) field names
-      const videoUrl = firstLesson.video_url || firstLesson.youtube_url
-      return videoUrl ? getVideoThumbnail(videoUrl) : "/placeholder.svg?height=120&width=160&text=Video"
+      return getVideoThumbnail(firstLesson.youtube_url)
     },
     [getVideoThumbnail],
   )

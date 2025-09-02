@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { OptimizedCourseCard } from "@/components/optimized-course-card"
 import { useOptimizedQuery } from "@/hooks/use-optimized-query"
 import { supabase, type Course, type Lesson, type UserProfile } from "@/lib/supabase"
+import { ArrowLeft, ArrowRight, BookOpen } from "@phosphor-icons/react"
 
 type CourseWithLessons = Course & {
   lessons: Lesson[]
@@ -33,41 +34,32 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
   }>({
     queryKey: `courses-page-${currentPage}-${pageSize}`,
     queryFn: async () => {
-      console.log("[v0] Starting course query...")
-
       const from = (currentPage - 1) * pageSize
       const to = from + pageSize - 1
 
-      console.log("[v0] Fetching course count...")
-      const { count } = await supabase.from("courses_sol").select("*", { count: "exact", head: true })
-      console.log("[v0] Total courses found:", count)
+      // Get total count
+      const { count } = await supabase.from("courses").select("*", { count: "exact", head: true })
 
-      console.log("[v0] Fetching courses from", from, "to", to)
+      // Get paginated courses
       const { data, error } = await supabase
-        .from("courses_sol")
+        .from("courses")
         .select(`
           *,
-          lessons_sol (*)
+          lessons (*)
         `)
         .order("created_at", { ascending: false })
         .range(from, to)
 
-      if (error) {
-        console.error("[v0] Error fetching courses:", error)
-        throw error
-      }
+      if (error) throw error
 
-      console.log("[v0] Raw courses data:", data)
-      console.log("[v0] Number of courses fetched:", data?.length || 0)
-
+      // Fetch creator profiles
       const coursesWithProfiles = await Promise.all(
         (data || []).map(async (course) => {
           try {
-            console.log("[v0] Fetching profile for creator_wallet:", course.creator_wallet)
             const { data: profileData, error: profileError } = await supabase
-              .from("user_profiles_sol")
+              .from("user_profiles")
               .select("*")
-              .eq("solana_wallet_address", course.creator_wallet)
+              .eq("wallet_address", course.creator_wallet.toLowerCase())
               .single()
 
             if (profileError && profileError.code !== "PGRST116") {
@@ -76,24 +68,16 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
 
             return {
               ...course,
-              lessons: course.lessons_sol || [], // Map lessons_sol to lessons
-              user_profiles: profileData ? [profileData] : [], // Map creator_profile to user_profiles array
               creator_profile: profileData || null,
             }
           } catch (error) {
-            console.error("[v0] Error in profile fetch for course:", course.id, error)
             return {
               ...course,
-              lessons: course.lessons_sol || [], // Map lessons_sol to lessons even on error
-              user_profiles: [], // Empty array on error
               creator_profile: null,
             }
           }
         }),
       )
-
-      console.log("[v0] Final courses with profiles:", coursesWithProfiles)
-      console.log("[v0] Returning data - courses count:", coursesWithProfiles.length, "total count:", count)
 
       return {
         courses: coursesWithProfiles,
@@ -132,27 +116,10 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
   }
 
   if (error || !coursesData?.courses || coursesData.courses.length === 0) {
-    console.log("[v0] No courses to display - error:", error)
-    console.log("[v0] coursesData:", coursesData)
-    console.log("[v0] courses array:", coursesData?.courses)
-    console.log("[v0] courses length:", coursesData?.courses?.length)
-
     return (
       <Card className="max-w-2xl mx-auto border-2 border-border bg-card shadow-lg">
         <CardContent className="text-center py-16 px-8">
-          <svg
-            className="w-16 h-16 text-muted-foreground mx-auto mb-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-            />
-          </svg>
+          <BookOpen size={64} className="text-muted-foreground mx-auto mb-6" />
           <h3 className="text-2xl font-semibold text-foreground mb-4">No courses yet</h3>
           <p className="text-muted-foreground text-lg leading-relaxed mb-8">
             Be the first to create a course and share your knowledge with the community!
@@ -162,14 +129,7 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
               size="lg"
               className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-8 py-4 text-lg h-14"
             >
-              <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                />
-              </svg>
+              <BookOpen size={20} className="mr-3" />
               Create First Course
             </Button>
           </Link>
@@ -180,17 +140,20 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
 
   return (
     <div className="space-y-6">
+      {/* Course count info */}
       <div className="text-sm text-muted-foreground">
         Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, coursesData.totalCount)} of{" "}
         {coursesData.totalCount} courses
       </div>
 
+      {/* Courses Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
         {coursesData.courses.map((course) => (
           <OptimizedCourseCard key={course.id} course={course} />
         ))}
       </div>
 
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <div className="flex items-center space-x-2">
@@ -201,9 +164,7 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
               disabled={currentPage === 1}
               className="border-2 border-border hover:bg-accent"
             >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <ArrowLeft size={16} className="mr-1" />
               Previous
             </Button>
 
@@ -246,12 +207,11 @@ export const OptimizedPaginatedCourses = memo(({ pageSize = 15 }: OptimizedPagin
               className="border-2 border-border hover:bg-accent"
             >
               Next
-              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+              <ArrowRight size={16} className="ml-1" />
             </Button>
           </div>
 
+          {/* Page info for mobile */}
           <div className="text-sm text-muted-foreground">
             Page {currentPage} of {totalPages}
           </div>

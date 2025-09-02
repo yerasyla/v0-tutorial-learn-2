@@ -11,13 +11,17 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { VerifiedBadge } from "@/components/verified-badge"
 import { supabase, type Course, type Lesson, type Donation, type UserProfile } from "@/lib/supabase"
-import { useSolana } from "@/contexts/solana-context"
+import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
-import { SolanaAuth } from "@/lib/solana-auth"
+import { WalletAuth } from "@/lib/wallet-auth"
 import { Heart, Coins, Play, BookOpen, User, Info, Wallet } from "@phosphor-icons/react"
-import { PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from "@solana/web3.js"
 
-const PRESET_AMOUNTS = [0.01, 0.1, 1.0] // SOL amounts
+const TUT_TOKEN_ADDRESS = "0xCAAE2A2F939F51d97CdFa9A86e79e3F085b799f3"
+const BNB_CHAIN_ID = "0x38" // BSC Mainnet
+const BNB_CHAIN_ID_DECIMAL = 56
+
+// Preset donation amounts
+const PRESET_AMOUNTS = [100, 1000, 10000]
 
 type CourseWithLessons = Course & {
   lessons: Lesson[]
@@ -27,12 +31,54 @@ type CourseWithCreatorProfile = CourseWithLessons & {
   creator_profile?: UserProfile | null
 }
 
-const solToLamports = (sol: number): number => {
-  return Math.floor(sol * LAMPORTS_PER_SOL)
+// Helper function to convert token amount to wei safely
+const tokenToWei = (tokenAmount: string): bigint => {
+  // Remove any non-numeric characters except decimal point
+  const cleanAmount = tokenAmount.replace(/[^0-9.]/g, "")
+
+  // Split by decimal point
+  const [integerPart = "0", decimalPart = ""] = cleanAmount.split(".")
+
+  // Pad or truncate decimal part to 18 digits
+  const paddedDecimal = decimalPart.padEnd(18, "0").slice(0, 18)
+
+  // Combine and convert to BigInt
+  const weiString = integerPart + paddedDecimal
+
+  return BigInt(weiString)
 }
 
-const lamportsToSol = (lamports: number): number => {
-  return lamports / LAMPORTS_PER_SOL
+// Helper function to convert wei to token amount safely
+const weiToToken = (weiAmount: bigint): string => {
+  const weiString = weiAmount.toString()
+  const paddedWei = weiString.padStart(19, "0") // Ensure at least 19 digits for proper decimal placement
+
+  const integerPart = paddedWei.slice(0, -18) || "0"
+  const decimalPart = paddedWei.slice(-18)
+
+  // Remove trailing zeros from decimal part
+  const trimmedDecimal = decimalPart.replace(/0+$/, "")
+
+  if (trimmedDecimal === "") {
+    return integerPart
+  }
+
+  return `${integerPart}.${trimmedDecimal}`
+}
+
+// Helper function to check if we're on BNB Chain
+const isBNBChain = (chainId: number | string | null): boolean => {
+  if (!chainId) return false
+
+  // Handle both hex string and decimal number formats
+  if (typeof chainId === "string") {
+    // If it's a hex string, convert to decimal
+    const decimal = chainId.startsWith("0x") ? Number.parseInt(chainId, 16) : Number.parseInt(chainId, 10)
+    return decimal === BNB_CHAIN_ID_DECIMAL
+  }
+
+  // If it's already a number, compare directly
+  return chainId === BNB_CHAIN_ID_DECIMAL
 }
 
 export default function CoursePage() {
@@ -45,9 +91,9 @@ export default function CoursePage() {
   const [currentLessonIndex, setCurrentLessonIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isDonating, setIsDonating] = useState(false)
-  const [solBalance, setSolBalance] = useState<number>(0)
+  const [tutBalance, setTutBalance] = useState<string>("0")
   const [isCheckingBalance, setIsCheckingBalance] = useState(false)
-  const { address, isConnected, connection, publicKey } = useSolana()
+  const { account, isConnected, chainId } = useWeb3()
 
   useEffect(() => {
     if (courseId) {
@@ -56,34 +102,25 @@ export default function CoursePage() {
     }
   }, [courseId])
 
+  // Check TUT balance when account or chain changes
   useEffect(() => {
-    console.log("[v0] Balance check useEffect triggered:", {
-      address,
-      isConnected,
-      connection: !!connection,
-      publicKey: !!publicKey,
-    })
-    if (address && isConnected && connection) {
-      checkSolBalance()
+    if (account && isConnected && isBNBChain(chainId)) {
+      checkTutBalance()
     } else {
-      console.log("[v0] Setting balance to 0 - missing requirements:", {
-        address: !!address,
-        isConnected,
-        connection: !!connection,
-      })
-      setSolBalance(0)
+      setTutBalance("0")
     }
-  }, [address, isConnected, connection])
+  }, [account, isConnected, chainId])
 
   const fetchCourse = async () => {
     try {
       console.log("📚 Fetching course:", courseId)
 
+      // First, fetch the course data with lessons
       const { data, error } = await supabase
-        .from("courses_sol")
+        .from("courses")
         .select(`
           *,
-          lessons_sol (*)
+          lessons (*)
         `)
         .eq("id", courseId)
         .single()
@@ -96,8 +133,8 @@ export default function CoursePage() {
       console.log("✅ Course fetched:", data)
 
       // Sort lessons by order_index
-      if (data.lessons_sol) {
-        data.lessons_sol.sort((a: Lesson, b: Lesson) => a.order_index - b.order_index)
+      if (data.lessons) {
+        data.lessons.sort((a: Lesson, b: Lesson) => a.order_index - b.order_index)
       }
 
       // Then, fetch creator profile separately
@@ -105,16 +142,16 @@ export default function CoursePage() {
       if (data.creator_wallet) {
         try {
           const { data: profileData, error: profileError } = await supabase
-            .from("user_profiles_sol")
+            .from("user_profiles")
             .select("*")
-            .eq("solana_wallet_address", data.creator_wallet)
+            .eq("wallet_address", data.creator_wallet.toLowerCase())
             .single()
 
           if (profileError && profileError.code !== "PGRST116") {
             console.error("❌ Error fetching creator profile:", profileError)
           } else if (profileData) {
             creatorProfile = profileData
-            console.log("✅ Creator profile fetched:", profileData.username)
+            console.log("✅ Creator profile fetched:", profileData.display_name)
           }
         } catch (error) {
           console.error("❌ Error fetching creator profile:", error)
@@ -123,7 +160,6 @@ export default function CoursePage() {
 
       setCourse({
         ...data,
-        lessons: data.lessons_sol || [],
         creator_profile: creatorProfile,
       })
     } catch (error) {
@@ -153,41 +189,99 @@ export default function CoursePage() {
     }
   }
 
-  const checkSolBalance = async () => {
-    console.log("[v0] checkSolBalance called with:", {
-      address,
-      isConnected,
-      connection: !!connection,
-      publicKey: !!publicKey,
-    })
+  const getWalletProvider = () => {
+    if (typeof window === "undefined") return null
+    return window.ethereum
+  }
 
-    if (!address || !isConnected || !connection || !publicKey) {
-      console.log("[v0] Missing requirements for balance check:", {
-        address: !!address,
-        isConnected,
-        connection: !!connection,
-        publicKey: !!publicKey,
-      })
-      setSolBalance(0)
+  const checkTutBalance = async () => {
+    if (!account || !isConnected || !isBNBChain(chainId)) {
+      setTutBalance("0")
       return
     }
 
     setIsCheckingBalance(true)
     try {
-      console.log("[v0] Fetching real SOL balance from blockchain...")
-      const balance = await connection.getBalance(publicKey)
-      const solBalance = lamportsToSol(balance)
+      const provider = getWalletProvider()
+      if (!provider) {
+        throw new Error("No wallet provider found")
+      }
 
-      console.log("[v0] Raw balance (lamports):", balance)
-      console.log("[v0] Converted balance (SOL):", solBalance)
+      // ERC-20 balanceOf function signature: balanceOf(address)
+      const balanceOfData = `0x70a08231000000000000000000000000${account.slice(2).toLowerCase().padStart(40, "0")}`
 
-      setSolBalance(solBalance)
-      console.log("✅ SOL balance fetched successfully:", solBalance)
+      const result = await provider.request({
+        method: "eth_call",
+        params: [
+          {
+            to: TUT_TOKEN_ADDRESS,
+            data: balanceOfData,
+          },
+          "latest",
+        ],
+      })
+
+      // Convert hex result to decimal and then to tokens (18 decimals)
+      const balanceWei = BigInt(result as string)
+      const balanceTokens = weiToToken(balanceWei)
+      setTutBalance(balanceTokens)
     } catch (error) {
-      console.error("[v0] Error checking SOL balance:", error)
-      setSolBalance(0)
+      console.error("Error checking TUT balance:", error)
+      setTutBalance("0")
     } finally {
       setIsCheckingBalance(false)
+    }
+  }
+
+  const switchToBNBChain = async () => {
+    try {
+      const provider = getWalletProvider()
+      if (!provider) {
+        throw new Error("No wallet provider found")
+      }
+
+      // Check if already on BNB Chain
+      if (isBNBChain(chainId)) {
+        return true
+      }
+
+      try {
+        await provider.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: BNB_CHAIN_ID }],
+        })
+        return true
+      } catch (switchError: any) {
+        // Chain not added to wallet
+        if (switchError.code === 4902) {
+          try {
+            await provider.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: BNB_CHAIN_ID,
+                  chainName: "BNB Smart Chain",
+                  nativeCurrency: {
+                    name: "BNB",
+                    symbol: "BNB",
+                    decimals: 18,
+                  },
+                  rpcUrls: ["https://bsc-dataseed1.binance.org/", "https://bsc-dataseed2.binance.org/"],
+                  blockExplorerUrls: ["https://bscscan.com/"],
+                },
+              ],
+            })
+            return true
+          } catch (addError) {
+            console.error("Error adding BNB Chain:", addError)
+            throw new Error("Failed to add BNB Smart Chain to wallet")
+          }
+        }
+        throw switchError
+      }
+    } catch (error) {
+      console.error("Error switching to BNB Chain:", error)
+      throw error
     }
   }
 
@@ -202,12 +296,12 @@ export default function CoursePage() {
   }
 
   const validateDonation = () => {
-    if (!isConnected || !address || !course) {
+    if (!isConnected || !account || !course) {
       throw new Error("Wallet not connected")
     }
 
-    if (!connection) {
-      throw new Error("Solana connection not available")
+    if (!isBNBChain(chainId)) {
+      throw new Error("Please switch to BNB Smart Chain")
     }
 
     if (!donationAmount || Number.parseFloat(donationAmount) <= 0) {
@@ -215,24 +309,25 @@ export default function CoursePage() {
     }
 
     const donationAmountNum = Number.parseFloat(donationAmount)
+    const balanceNum = Number.parseFloat(tutBalance)
 
-    if (donationAmountNum > solBalance) {
-      throw new Error(`Insufficient SOL balance. You have ${solBalance.toFixed(4)} SOL`)
+    if (donationAmountNum > balanceNum) {
+      throw new Error(`Insufficient TUT balance. You have ${tutBalance} TUT`)
     }
 
-    if (!course.creator_wallet || course.creator_wallet.length < 32 || course.creator_wallet.length > 50) {
+    if (!course.creator_wallet || course.creator_wallet.length !== 42) {
       throw new Error("Invalid creator wallet address")
     }
 
     return donationAmountNum
   }
 
-  const saveDonationToDatabase = async (txSignature: string, blockHeight: number) => {
+  const saveDonationToDatabase = async (txHash: string) => {
     try {
-      console.log("💾 Saving SOL donation to database:", { txSignature, donationAmount, courseId, address })
+      console.log("💾 Saving donation to database:", { txHash, donationAmount, courseId, account })
 
       // Get current session
-      const session = SolanaAuth.getSession()
+      const session = WalletAuth.getSession()
 
       const response = await fetch("/api/donations", {
         method: "POST",
@@ -241,12 +336,9 @@ export default function CoursePage() {
         },
         body: JSON.stringify({
           course_id: courseId,
-          donor_wallet_address: address!,
-          recipient_wallet: course!.creator_wallet,
-          amount_sol: donationAmount,
-          amount_lamports: solToLamports(Number.parseFloat(donationAmount)),
-          transaction_signature: txSignature,
-          block_height: blockHeight,
+          donor_wallet: account!.toLowerCase(),
+          amount: donationAmount,
+          tx_hash: txHash,
           session: session,
         }),
       })
@@ -281,110 +373,91 @@ export default function CoursePage() {
       // Validate donation
       const donationAmountNum = validateDonation()
 
-      if (!publicKey) {
-        throw new Error("Wallet not available")
+      const provider = getWalletProvider()
+      if (!provider) {
+        throw new Error("No wallet provider found. Please install a Web3 wallet.")
       }
 
-      // Create recipient public key
-      const recipientPubkey = new PublicKey(course!.creator_wallet)
+      // Ensure we're on BNB Chain
+      await switchToBNBChain()
 
-      // Convert SOL to lamports
-      const lamports = solToLamports(donationAmountNum)
+      // Wait for chain switch to complete
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
-      console.log("SOL donation transaction details:", {
-        from: address,
-        to: course!.creator_wallet,
+      // Verify we're on the correct chain after switch
+      const currentChainId = await provider.request({ method: "eth_chainId" })
+      if (!isBNBChain(currentChainId)) {
+        throw new Error("Failed to switch to BNB Smart Chain")
+      }
+
+      // Calculate amount in wei with proper precision using our helper function
+      const amountInWei = tokenToWei(donationAmount)
+
+      // Prepare transfer data - FIXED: Proper address encoding
+      const recipientAddress = course!.creator_wallet.toLowerCase()
+
+      // Validate recipient address format
+      if (!recipientAddress.startsWith("0x") || recipientAddress.length !== 42) {
+        throw new Error("Invalid recipient address format")
+      }
+
+      // Remove 0x prefix and ensure it's exactly 40 characters (20 bytes)
+      const recipientAddressClean = recipientAddress.slice(2).toLowerCase()
+      if (recipientAddressClean.length !== 40) {
+        throw new Error("Invalid recipient address length")
+      }
+
+      // Pad recipient address to 32 bytes (64 hex characters) for ABI encoding
+      const recipientHex = recipientAddressClean.padStart(64, "0")
+
+      // Convert amount to hex and pad to 32 bytes (64 hex characters)
+      const amountHex = amountInWei.toString(16).padStart(64, "0")
+
+      // ERC-20 transfer function signature: transfer(address,uint256)
+      // Function selector: 0xa9059cbb
+      const transferData = `0xa9059cbb${recipientHex}${amountHex}`
+
+      console.log("Donation transaction details:", {
+        from: account,
+        to: TUT_TOKEN_ADDRESS,
         amount: donationAmount,
-        lamports: lamports,
+        amountInWei: amountInWei.toString(),
+        recipient: recipientAddress,
+        recipientHex: recipientHex,
+        amountHex: amountHex,
+        data: transferData,
       })
 
-      let recentBlockhash: string
-      try {
-        if (connection) {
-          const { blockhash } = await connection.getLatestBlockhash("confirmed")
-          recentBlockhash = blockhash
-          console.log("[v0] Got recent blockhash from connection:", blockhash.slice(0, 8) + "...")
-        } else {
-          throw new Error("No connection available")
-        }
-      } catch (error) {
-        console.log("[v0] Failed to get blockhash from connection, using Phantom's built-in handling")
-        // Let Phantom handle the transaction entirely
-        const provider = window.solana
-        if (!provider) {
-          throw new Error("Phantom wallet not found")
-        }
+      // Verify the encoded recipient address
+      const decodedRecipient = "0x" + recipientHex.slice(-40)
+      console.log("Decoded recipient address:", decodedRecipient)
+      console.log("Original recipient address:", recipientAddress)
 
-        // Use Phantom's sendTransaction method which handles blockhash automatically
-        const transaction = new Transaction().add(
-          SystemProgram.transfer({
-            fromPubkey: publicKey,
-            toPubkey: recipientPubkey,
-            lamports: lamports,
-          }),
-        )
-
-        const { signature } = await provider.signAndSendTransaction(transaction)
-
-        if (!signature) {
-          throw new Error("Transaction signing failed")
-        }
-
-        console.log("SOL transaction sent successfully:", signature)
-        const blockHeight = Date.now() // Use timestamp as placeholder
-
-        // Save donation to database
-        await saveDonationToDatabase(signature, blockHeight)
-
-        toast({
-          title: "Donation successful! 🎉",
-          description: `Successfully donated ${donationAmount} SOL to ${course!.creator_profile?.username || "creator"}`,
-        })
-
-        // Reset form
-        setDonationAmount("")
-        setSelectedPreset(null)
-
-        // Refresh data
-        checkSolBalance()
-        return
+      if (decodedRecipient.toLowerCase() !== recipientAddress.toLowerCase()) {
+        throw new Error("Address encoding verification failed")
       }
 
-      // Create a proper Solana transaction with blockhash
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: recipientPubkey,
-          lamports: lamports,
-        }),
-      )
+      // Send transaction
+      const txHash = await provider.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: account,
+            to: TUT_TOKEN_ADDRESS,
+            data: transferData,
+            // leave gas undefined – wallet will estimate
+          },
+        ],
+      })
 
-      transaction.recentBlockhash = recentBlockhash
-      transaction.feePayer = publicKey
-
-      // Use the correct Phantom wallet API
-      const provider = window.solana
-      if (!provider) {
-        throw new Error("Phantom wallet not found")
-      }
-
-      // Sign and send transaction using Phantom's built-in method
-      const { signature } = await provider.signAndSendTransaction(transaction)
-
-      if (!signature) {
-        throw new Error("Transaction signing failed")
-      }
-
-      console.log("SOL transaction sent successfully:", signature)
-
-      const blockHeight = Date.now() // Use timestamp as placeholder
+      console.log("Transaction sent successfully:", txHash)
 
       // Save donation to database
-      await saveDonationToDatabase(signature, blockHeight)
+      await saveDonationToDatabase(txHash)
 
       toast({
         title: "Donation successful! 🎉",
-        description: `Successfully donated ${donationAmount} SOL to ${course!.creator_profile?.username || "creator"}`,
+        description: `Successfully donated ${donationAmount} TUT tokens to ${course!.creator_profile?.display_name || "creator"}`,
       })
 
       // Reset form
@@ -392,16 +465,26 @@ export default function CoursePage() {
       setSelectedPreset(null)
 
       // Refresh data
-      checkSolBalance()
+      checkTutBalance()
     } catch (error: any) {
-      console.error("SOL donation error:", error)
+      console.error("Donation error:", error)
 
       let errorMessage = "Transaction failed. Please try again."
 
-      if (error.message?.includes("User rejected")) {
+      if (error.code === 4001) {
         errorMessage = "Transaction was rejected by user"
+      } else if (error.code === -32603) {
+        errorMessage = "Internal wallet error. Please try again."
+      } else if (error.code === -32000) {
+        errorMessage = "Insufficient funds for gas fee"
       } else if (error.message?.includes("insufficient funds")) {
-        errorMessage = "Insufficient SOL for transaction and fees"
+        errorMessage = "Insufficient TUT tokens or BNB for gas"
+      } else if (error.message?.includes("execution reverted")) {
+        errorMessage = "Transaction failed. Check your TUT balance and try again."
+      } else if (error.message?.includes("No wallet provider")) {
+        errorMessage = "Please install a Web3 wallet like MetaMask"
+      } else if (error.message?.includes("switch to BNB")) {
+        errorMessage = "Please switch to BNB Smart Chain network"
       } else if (error.message?.includes("Invalid recipient")) {
         errorMessage = "Invalid creator wallet address"
       } else if (error.message) {
@@ -435,10 +518,10 @@ export default function CoursePage() {
   }
 
   const getCreatorDisplayName = () => {
-    if (course?.creator_profile?.username) {
-      return course.creator_profile.username
+    if (course?.creator_profile?.display_name) {
+      return course.creator_profile.display_name
     }
-    return course ? `${course.creator_wallet.slice(0, 4)}...${course.creator_wallet.slice(-4)}` : ""
+    return course ? `${course.creator_wallet.slice(0, 6)}...${course.creator_wallet.slice(-4)}` : ""
   }
 
   const getCreatorAvatar = () => {
@@ -446,21 +529,23 @@ export default function CoursePage() {
   }
 
   const getCreatorAvatarFallback = () => {
-    if (course?.creator_profile?.username) {
-      return course.creator_profile.username.charAt(0).toUpperCase()
+    if (course?.creator_profile?.display_name) {
+      return course.creator_profile.display_name.charAt(0).toUpperCase()
     }
-    return course ? course.creator_wallet.charAt(0).toUpperCase() : "U"
+    return course ? course.creator_wallet.charAt(2).toUpperCase() : "U"
   }
 
-  const totalDonations = donations.reduce((sum, donation) => {
-    // Handle both old TUT donations and new SOL donations
-    const amount = donation.amount_sol
-      ? Number.parseFloat(donation.amount_sol)
-      : Number.parseFloat(donation.amount || "0")
-    return sum + amount
-  }, 0)
+  const totalDonations = donations.reduce((sum, donation) => sum + Number.parseFloat(donation.amount), 0)
+  const isOnCorrectChain = isBNBChain(chainId)
+  const hasInsufficientBalance = Number.parseFloat(donationAmount) > Number.parseFloat(tutBalance)
 
-  const hasInsufficientBalance = Number.parseFloat(donationAmount) > solBalance
+  // Debug logging
+  console.log("Chain ID from context:", chainId, typeof chainId)
+  console.log("Is on correct chain:", isOnCorrectChain)
+  console.log("BNB Chain ID (hex):", BNB_CHAIN_ID)
+  console.log("BNB Chain ID (decimal):", BNB_CHAIN_ID_DECIMAL)
+  console.log("Current donations:", donations)
+  console.log("Total donations:", totalDonations)
 
   if (isLoading) {
     return (
@@ -639,24 +724,22 @@ export default function CoursePage() {
                     <VerifiedBadge isVerified={true} size="sm" className="ml-2" />
                   )}
                 </CardTitle>
-                <CardDescription>Donate SOL to show appreciation for this course</CardDescription>
+                <CardDescription>Donate TUT tokens to show appreciation for this course</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Connection Status */}
                 {!isConnected && (
                   <div className="p-4 bg-muted rounded-lg text-center">
                     <Wallet size={24} className="mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Connect your Solana wallet to support this creator
-                    </p>
+                    <p className="text-sm text-muted-foreground mb-3">Connect your wallet to support this creator</p>
                     <Button onClick={() => window.location.reload()} variant="outline" size="sm" className="w-full">
-                      Connect Solana Wallet
+                      Connect Wallet
                     </Button>
                   </div>
                 )}
 
                 {/* Wrong Chain Warning */}
-                {/* {isConnected && !isOnCorrectChain && (
+                {isConnected && !isOnCorrectChain && (
                   <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-3">
                       Please switch to BNB Smart Chain to donate
@@ -668,41 +751,35 @@ export default function CoursePage() {
                       Switch to BNB Chain
                     </Button>
                   </div>
-                )} */}
+                )}
 
                 {/* Donation Form */}
-                {isConnected && (
+                {isConnected && isOnCorrectChain && (
                   <>
                     {/* Balance Display */}
                     <div className="p-3 bg-muted rounded-lg">
                       <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">Your SOL Balance:</span>
+                        <span className="text-sm font-medium">Your TUT Balance:</span>
                         <span className="font-bold">
-                          {isCheckingBalance ? "Loading..." : `${solBalance.toFixed(4)} SOL`}
+                          {isCheckingBalance ? "Loading..." : `${Number.parseFloat(tutBalance).toFixed(5)} TUT`}
                         </span>
-                      </div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Info size={12} />
-                          <span>Balance display limited due to RPC rate limits</span>
-                        </div>
                       </div>
                     </div>
 
                     {/* Custom Amount Input */}
                     <div className="space-y-2">
                       <Label htmlFor="donation-amount" className="text-sm font-medium">
-                        Custom Amount (SOL)
+                        Custom Amount (TUT)
                       </Label>
                       <Input
                         id="donation-amount"
                         type="number"
-                        step="0.001"
+                        step="0.00001"
                         min="0"
-                        max={solBalance}
+                        max={tutBalance}
                         value={donationAmount}
                         onChange={(e) => handleCustomAmountChange(e.target.value)}
-                        placeholder="Enter SOL amount"
+                        placeholder="Enter amount"
                         className={`${
                           hasInsufficientBalance && donationAmount ? "border-red-500 focus:border-red-500" : ""
                         }`}
@@ -714,7 +791,7 @@ export default function CoursePage() {
 
                     {/* Preset Amount Buttons */}
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Quick Amounts (SOL)</Label>
+                      <Label className="text-sm font-medium">Quick Amounts (TUT)</Label>
                       <div className="grid grid-cols-3 gap-2">
                         {PRESET_AMOUNTS.map((amount) => (
                           <Button
@@ -729,7 +806,7 @@ export default function CoursePage() {
                                 : ""
                             }`}
                           >
-                            {amount} SOL
+                            {amount.toLocaleString()}
                           </Button>
                         ))}
                       </div>
@@ -747,7 +824,7 @@ export default function CoursePage() {
                       }
                     >
                       <Coins size={16} className="mr-2" weight="fill" />
-                      {isDonating ? "Processing..." : "Donate SOL"}
+                      {isDonating ? "Processing..." : "Donate TUT"}
                     </Button>
 
                     {/* Transaction Info */}
@@ -761,7 +838,7 @@ export default function CoursePage() {
                         {course.creator_wallet.slice(-6)}
                       </p>
                       <p>
-                        <strong>Network:</strong> Solana
+                        <strong>Network:</strong> BNB Smart Chain (BSC)
                       </p>
                     </div>
                   </>
@@ -778,7 +855,7 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground font-medium">Total Donations:</span>
-                    <span className="font-bold text-lg">{totalDonations.toFixed(4)} SOL</span>
+                    <span className="font-bold text-lg">{totalDonations.toFixed(2)} TUT</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground font-medium">Supporters:</span>
@@ -796,21 +873,17 @@ export default function CoursePage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {(donations || []).slice(0, 10).map((donation) => {
-                      const amount = donation.amount_sol ? `${donation.amount_sol} SOL` : `${donation.amount} TUT`
-                      const donorWallet = donation.donor_wallet_address || donation.donor_wallet || "Unknown"
-                      return (
-                        <div key={donation.id} className="flex justify-between items-center p-3 bg-accent rounded-lg">
-                          <div className="flex items-center">
-                            <User size={16} className="text-muted-foreground mr-2" />
-                            <span className="text-sm font-medium">
-                              {donorWallet.slice(0, 4)}...{donorWallet.slice(-4)}
-                            </span>
-                          </div>
-                          <span className="font-bold">{amount}</span>
+                    {donations.slice(0, 10).map((donation) => (
+                      <div key={donation.id} className="flex justify-between items-center p-3 bg-accent rounded-lg">
+                        <div className="flex items-center">
+                          <User size={16} className="text-muted-foreground mr-2" />
+                          <span className="text-sm font-medium">
+                            {donation.donor_wallet.slice(0, 6)}...{donation.donor_wallet.slice(-4)}
+                          </span>
                         </div>
-                      )
-                    })}
+                        <span className="font-bold">{donation.amount} TUT</span>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>

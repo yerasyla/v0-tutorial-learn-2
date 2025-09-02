@@ -6,8 +6,8 @@ import { usePathname } from "next/navigation"
 import { Menu, Home, BookOpen, LayoutDashboard, Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { useSolana } from "@/contexts/solana-context"
-import { SolanaWalletStatus } from "@/components/solana-wallet-status"
+import { useWeb3 } from "@/contexts/web3-context"
+import { OptimizedWalletStatus } from "@/components/optimized-wallet-status"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { SearchButton } from "@/components/search-button"
 import { Logo } from "@/components/logo"
@@ -20,14 +20,13 @@ const navigationItems = [
 const walletRequiredItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Create Course", href: "/create-course", icon: Plus },
-  { name: "Test Solana", href: "/test-solana", icon: Search },
 ]
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const pathname = usePathname()
-  const { isConnected } = useSolana()
+  const { isConnected } = useWeb3()
 
   useEffect(() => {
     setMounted(true)
@@ -98,7 +97,7 @@ export default function Navbar() {
                 <SearchButton />
               </div>
               <ThemeToggle />
-              <SolanaWalletStatus />
+              <OptimizedWalletStatus />
 
               {/* Mobile Menu Button */}
               <Sheet open={isOpen} onOpenChange={setIsOpen}>

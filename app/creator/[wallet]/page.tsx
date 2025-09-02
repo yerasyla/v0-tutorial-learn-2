@@ -14,107 +14,30 @@ import { ClickUploadAvatar } from "@/components/click-upload-avatar"
 import { VerifiedBadge } from "@/components/verified-badge"
 import { supabase, type UserProfile, type CourseWithLessons } from "@/lib/supabase"
 import { updateProfile } from "@/app/actions/profile-actions"
-import { useSolana } from "@/contexts/solana-context"
+import { useWeb3 } from "@/contexts/web3-context"
 import { toast } from "@/hooks/use-toast"
-import { SolanaAuth } from "@/lib/solana-auth"
+import { WalletAuth } from "@/lib/wallet-auth"
 import { deleteAvatarFromSupabase } from "@/lib/supabase-storage"
-
-const PencilIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-)
-
-const SaveIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-    <polyline points="17,21 17,13 7,13 7,21" />
-    <polyline points="7,3 7,8 15,8" />
-  </svg>
-)
-
-const XIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
-  </svg>
-)
-
-const GlobeIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="2" y1="12" x2="22" y2="12" />
-    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-  </svg>
-)
-
-const TwitterIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 23 3z" />
-  </svg>
-)
-
-const AtIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="4" />
-    <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94" />
-  </svg>
-)
-
-const CaretDownIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="6,9 12,15 18,9" />
-  </svg>
-)
-
-const CaretUpIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="18,15 12,9 6,15" />
-  </svg>
-)
-
-const UserIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
-  </svg>
-)
-
-const CalendarIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-    <line x1="16" y1="2" x2="16" y2="6" />
-    <line x1="8" y1="2" x2="8" y2="6" />
-    <line x1="3" y1="10" x2="21" y2="10" />
-  </svg>
-)
-
-const BookOpenIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1-3-3h7z" />
-  </svg>
-)
-
-const PlayIcon = ({ size = 18 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <polygon points="5,3 19,12 5,21" />
-  </svg>
-)
-
-const ArrowSquareOutIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-    <polyline points="15,3 21,3 21,9" />
-    <line x1="10" y1="14" x2="21" y2="3" />
-  </svg>
-)
+import {
+  PencilSimple,
+  FloppyDisk,
+  X,
+  Globe,
+  BookOpen,
+  Play,
+  User,
+  Calendar,
+  ArrowSquareOut,
+  TwitterLogo,
+  At,
+  CaretDown,
+  CaretUp,
+} from "@phosphor-icons/react"
 
 export default function CreatorProfilePage() {
   const params = useParams()
   const walletAddress = params.wallet as string
-  const { address, isConnected } = useSolana()
+  const { account, isConnected } = useWeb3()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [courses, setCourses] = useState<CourseWithLessons[]>([])
@@ -137,7 +60,7 @@ export default function CreatorProfilePage() {
     twitter_handle: "",
   })
 
-  const isOwner = isConnected && address === walletAddress
+  const isOwner = isConnected && account?.toLowerCase() === walletAddress.toLowerCase()
 
   useEffect(() => {
     const checkMobile = () => {
@@ -158,12 +81,12 @@ export default function CreatorProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      console.log("Fetching profile for wallet:", walletAddress)
+      console.log("Fetching profile for wallet:", walletAddress.toLowerCase())
 
       const { data, error } = await supabase
-        .from("user_profiles_sol")
+        .from("user_profiles")
         .select("*")
-        .eq("solana_wallet_address", walletAddress)
+        .eq("wallet_address", walletAddress.toLowerCase())
         .maybeSingle()
 
       console.log("Profile fetch result:", { data, error })
@@ -184,7 +107,7 @@ export default function CreatorProfilePage() {
       } else {
         // Create default profile if it doesn't exist
         const defaultProfile = {
-          solana_wallet_address: walletAddress,
+          wallet_address: walletAddress.toLowerCase(),
           display_name: null,
           avatar_url: null,
           about_me: null,
@@ -209,12 +132,12 @@ export default function CreatorProfilePage() {
   const fetchCreatorCourses = async () => {
     try {
       const { data, error } = await supabase
-        .from("courses_sol")
+        .from("courses")
         .select(`
           *,
-          lessons_sol (*)
+          lessons (*)
         `)
-        .eq("creator_wallet", walletAddress)
+        .eq("creator_wallet", walletAddress.toLowerCase())
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -225,7 +148,7 @@ export default function CreatorProfilePage() {
       const coursesWithSortedLessons =
         data?.map((course) => ({
           ...course,
-          lessons: course.lessons_sol?.sort((a: any, b: any) => a.order_index - b.order_index) || [],
+          lessons: course.lessons?.sort((a: any, b: any) => a.order_index - b.order_index) || [],
         })) || []
 
       setCourses(coursesWithSortedLessons)
@@ -289,7 +212,8 @@ export default function CreatorProfilePage() {
       return
     }
 
-    const session = SolanaAuth.getSession()
+    // Get current session using WalletAuth
+    const session = WalletAuth.getSession()
     if (!session) {
       toast({
         title: "Session expired",
@@ -302,7 +226,7 @@ export default function CreatorProfilePage() {
     setIsSaving(true)
 
     try {
-      console.log("Saving profile with wallet:", address)
+      console.log("Saving profile with wallet:", account)
 
       // If avatar was removed, delete the old one from storage
       if (profile?.avatar_url && !editForm.avatar_url && profile.avatar_url.includes("supabase")) {
@@ -366,7 +290,7 @@ export default function CreatorProfilePage() {
     if (lessons.length === 0) return "/placeholder.svg?height=200&width=300"
 
     const firstLesson = lessons[0]
-    const match = firstLesson.video_url?.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
+    const match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
     const videoId = match ? match[1] : null
 
     return videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : "/placeholder.svg?height=200&width=300"
@@ -441,7 +365,7 @@ export default function CreatorProfilePage() {
                             className="rounded-full h-8 w-8 md:h-10 md:w-10 p-0 bg-brand-primary hover:bg-brand-secondary text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-200"
                             title="Edit profile"
                           >
-                            <PencilIcon />
+                            <PencilSimple size={isMobile ? 14 : 16} />
                           </Button>
                         </div>
                       )}
@@ -483,7 +407,7 @@ export default function CreatorProfilePage() {
                             onClick={() => toggleSection("about")}
                             className="p-1"
                           >
-                            {expandedSections.about ? <CaretUpIcon /> : <CaretDownIcon />}
+                            {expandedSections.about ? <CaretUp size={16} /> : <CaretDown size={16} />}
                           </Button>
                         )}
                       </div>
@@ -507,8 +431,8 @@ export default function CreatorProfilePage() {
                     <div className="space-y-2 md:space-y-3">
                       <div className="flex items-center justify-between">
                         <Label htmlFor="website_url" className="text-sm md:text-base font-medium text-foreground">
-                          <GlobeIcon />
-                          <span className="ml-2">Website URL</span>
+                          <Globe size={16} className="inline mr-2" />
+                          Website URL
                         </Label>
                         {isMobile && (
                           <Button
@@ -518,7 +442,7 @@ export default function CreatorProfilePage() {
                             onClick={() => toggleSection("website")}
                             className="p-1"
                           >
-                            {expandedSections.website ? <CaretUpIcon /> : <CaretDownIcon />}
+                            {expandedSections.website ? <CaretUp size={16} /> : <CaretDown size={16} />}
                           </Button>
                         )}
                       </div>
@@ -541,8 +465,8 @@ export default function CreatorProfilePage() {
                     <div className="space-y-2 md:space-y-3">
                       <div className="flex items-center justify-between">
                         <Label htmlFor="twitter_handle" className="text-sm md:text-base font-medium text-foreground">
-                          <TwitterIcon />
-                          <span className="ml-2">Twitter Handle</span>
+                          <TwitterLogo size={16} className="inline mr-2" />
+                          Twitter Handle
                         </Label>
                         {isMobile && (
                           <Button
@@ -552,7 +476,7 @@ export default function CreatorProfilePage() {
                             onClick={() => toggleSection("twitter")}
                             className="p-1"
                           >
-                            {expandedSections.twitter ? <CaretUpIcon /> : <CaretDownIcon />}
+                            {expandedSections.twitter ? <CaretUp size={16} /> : <CaretDown size={16} />}
                           </Button>
                         )}
                       </div>
@@ -560,7 +484,7 @@ export default function CreatorProfilePage() {
                         <>
                           <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                              <AtIcon />
+                              <At size={18} className="text-muted-foreground" />
                             </div>
                             <Input
                               id="twitter_handle"
@@ -583,8 +507,8 @@ export default function CreatorProfilePage() {
                         disabled={isSaving}
                         className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-6 md:px-8 py-3 h-12 font-semibold order-1 sm:order-none"
                       >
-                        <SaveIcon />
-                        <span className="ml-2">{isSaving ? "Saving..." : "Save Changes"}</span>
+                        <FloppyDisk size={18} className="mr-2" />
+                        {isSaving ? "Saving..." : "Save Changes"}
                       </Button>
                       <Button
                         variant="outline"
@@ -592,8 +516,8 @@ export default function CreatorProfilePage() {
                         disabled={isSaving}
                         className="px-6 md:px-8 py-3 h-12 border-2 border-border bg-transparent hover:bg-accent order-2 sm:order-none"
                       >
-                        <XIcon />
-                        <span className="ml-2">Cancel</span>
+                        <X size={18} className="mr-2" />
+                        Cancel
                       </Button>
                     </div>
                   </div>
@@ -608,8 +532,8 @@ export default function CreatorProfilePage() {
                           <VerifiedBadge isVerified={profile?.is_verified || false} size={isMobile ? "md" : "lg"} />
                         </div>
                         <p className="text-muted-foreground flex items-center justify-center md:justify-start text-base md:text-lg mb-2">
-                          <UserIcon />
-                          <span className="ml-2">{formatWalletAddress(walletAddress)}</span>
+                          <User size={18} className="mr-2" />
+                          {formatWalletAddress(walletAddress)}
                         </p>
                       </div>
                       {isOwner && (
@@ -617,8 +541,8 @@ export default function CreatorProfilePage() {
                           onClick={() => setIsEditing(true)}
                           className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-4 md:px-6 py-2 md:py-3 h-10 md:h-12 font-semibold text-sm md:text-base"
                         >
-                          <PencilIcon />
-                          <span className="ml-2">Edit Profile</span>
+                          <PencilSimple size={16} className="mr-2" />
+                          Edit Profile
                         </Button>
                       )}
                     </div>
@@ -638,9 +562,9 @@ export default function CreatorProfilePage() {
                           rel="noopener noreferrer"
                           className="flex items-center hover:text-brand-primary transition-colors group min-h-[44px] sm:min-h-0"
                         >
-                          <GlobeIcon />
-                          <span className="ml-2 group-hover:underline">Website</span>
-                          <ArrowSquareOutIcon />
+                          <Globe size={18} className="mr-2 flex-shrink-0" />
+                          <span className="group-hover:underline">Website</span>
+                          <ArrowSquareOut size={16} className="ml-2 flex-shrink-0" />
                         </a>
                       )}
                       {profile?.twitter_handle && (
@@ -650,22 +574,18 @@ export default function CreatorProfilePage() {
                           rel="noopener noreferrer"
                           className="flex items-center hover:text-brand-primary transition-colors group min-h-[44px] sm:min-h-0"
                         >
-                          <TwitterIcon />
-                          <span className="ml-2 group-hover:underline">
-                            {formatTwitterHandle(profile.twitter_handle)}
-                          </span>
-                          <ArrowSquareOutIcon />
+                          <TwitterLogo size={18} className="mr-2 flex-shrink-0" />
+                          <span className="group-hover:underline">{formatTwitterHandle(profile.twitter_handle)}</span>
+                          <ArrowSquareOut size={16} className="ml-2 flex-shrink-0" />
                         </a>
                       )}
                       <div className="flex items-center min-h-[44px] sm:min-h-0">
-                        <CalendarIcon />
-                        <span className="ml-2">Joined {new Date(profile?.created_at || "").toLocaleDateString()}</span>
+                        <Calendar size={18} className="mr-2 flex-shrink-0" />
+                        Joined {new Date(profile?.created_at || "").toLocaleDateString()}
                       </div>
                       <div className="flex items-center min-h-[44px] sm:min-h-0">
-                        <BookOpenIcon />
-                        <span className="ml-2">
-                          {courses.length} course{courses.length !== 1 ? "s" : ""}
-                        </span>
+                        <BookOpen size={18} className="mr-2 flex-shrink-0" />
+                        {courses.length} course{courses.length !== 1 ? "s" : ""}
                       </div>
                     </div>
                   </div>
@@ -687,8 +607,8 @@ export default function CreatorProfilePage() {
                   size="lg"
                   className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-6 md:px-8 py-3 md:py-4 text-base md:text-lg h-12 md:h-14 font-semibold w-full lg:w-auto"
                 >
-                  <BookOpenIcon />
-                  <span className="ml-2 md:ml-3">Create New Course</span>
+                  <BookOpen size={18} className="mr-2 md:mr-3" />
+                  Create New Course
                 </Button>
               </Link>
             )}
@@ -697,7 +617,8 @@ export default function CreatorProfilePage() {
           {courses.length === 0 ? (
             <Card className="max-w-2xl mx-auto border-2 border-border bg-card shadow-lg">
               <CardContent className="text-center py-12 md:py-16 px-6 md:px-8">
-                <BookOpenIcon />
+                <BookOpen size={48} className="md:hidden text-muted-foreground mx-auto mb-4" />
+                <BookOpen size={64} className="hidden md:block text-muted-foreground mx-auto mb-6" />
                 <h3 className="text-xl md:text-2xl font-semibold text-foreground mb-3 md:mb-4">
                   {isOwner ? "No courses yet" : "No courses available"}
                 </h3>
@@ -712,8 +633,8 @@ export default function CreatorProfilePage() {
                       size="lg"
                       className="bg-brand-primary hover:bg-brand-secondary text-primary-foreground px-6 md:px-8 py-3 md:py-4 text-base md:text-lg h-12 md:h-14 font-semibold w-full sm:w-auto"
                     >
-                      <BookOpenIcon />
-                      <span className="ml-2 md:ml-3">Create Your First Course</span>
+                      <BookOpen size={18} className="mr-2 md:mr-3" />
+                      Create Your First Course
                     </Button>
                   </Link>
                 )}
@@ -737,7 +658,7 @@ export default function CreatorProfilePage() {
                         loading="lazy"
                       />
                       <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        <PlayIcon size={isMobile ? 40 : 56} />
+                        <Play size={isMobile ? 40 : 56} className="text-white" weight="fill" />
                       </div>
                       <div className="absolute top-3 md:top-4 right-3 md:right-4">
                         <Badge
@@ -769,8 +690,8 @@ export default function CreatorProfilePage() {
                       <div className="flex gap-2 md:gap-3">
                         <Link href={`/courses/${course.id}`} className="flex-1">
                           <Button className="w-full h-11 md:h-12 text-sm md:text-base font-semibold bg-brand-primary hover:bg-brand-secondary text-primary-foreground">
-                            <PlayIcon size={16} />
-                            <span className="ml-2 md:ml-3">{isOwner ? "View Course" : "Start Course"}</span>
+                            <Play size={16} className="mr-2 md:mr-3" weight="fill" />
+                            {isOwner ? "View Course" : "Start Course"}
                           </Button>
                         </Link>
                         {isOwner && (
@@ -779,7 +700,7 @@ export default function CreatorProfilePage() {
                               variant="outline"
                               className="h-11 md:h-12 px-3 md:px-4 border-2 border-border bg-transparent hover:bg-accent"
                             >
-                              <PencilIcon />
+                              <PencilSimple size={16} />
                             </Button>
                           </Link>
                         )}

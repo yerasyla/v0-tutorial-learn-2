@@ -7,21 +7,7 @@ import { Button } from "@/components/ui/button"
 import { OptimizedCourseCard } from "@/components/optimized-course-card"
 import { useOptimizedQuery } from "@/hooks/use-optimized-query"
 import { supabase, type Course, type Lesson, type UserProfile } from "@/lib/supabase"
-
-const BookOpen = ({ size = 24, className = "" }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    className={className}
-  >
-    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-  </svg>
-)
+import { BookOpen } from "@phosphor-icons/react"
 
 type CourseWithLessons = Course & {
   lessons: Lesson[]
@@ -40,10 +26,10 @@ export const OptimizedFeaturedCourses = memo(() => {
     queryKey: "featured-courses-optimized",
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("courses_sol")
+        .from("courses")
         .select(`
           *,
-          lessons_sol (*)
+          lessons (*)
         `)
         .order("created_at", { ascending: false })
         .limit(8) // Show more courses in featured section
@@ -54,9 +40,9 @@ export const OptimizedFeaturedCourses = memo(() => {
         (data || []).map(async (course) => {
           try {
             const { data: profileData, error: profileError } = await supabase
-              .from("user_profiles_sol")
+              .from("user_profiles")
               .select("*")
-              .eq("solana_wallet_address", course.creator_wallet)
+              .eq("wallet_address", course.creator_wallet.toLowerCase())
               .single()
 
             if (profileError && profileError.code !== "PGRST116") {
@@ -65,13 +51,11 @@ export const OptimizedFeaturedCourses = memo(() => {
 
             return {
               ...course,
-              lessons: course.lessons_sol || [],
               creator_profile: profileData || null,
             }
           } catch (error) {
             return {
               ...course,
-              lessons: course.lessons_sol || [],
               creator_profile: null,
             }
           }

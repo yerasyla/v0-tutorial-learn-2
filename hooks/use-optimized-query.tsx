@@ -35,8 +35,6 @@ export function useOptimizedQuery<T>({
   const [error, setError] = useState<Error | null>(null)
   const [isStale, setIsStale] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const queryFnRef = useRef(queryFn)
-  queryFnRef.current = queryFn
 
   const fetchData = useCallback(async () => {
     if (!enabled) return
@@ -61,9 +59,7 @@ export function useOptimizedQuery<T>({
     setError(null)
 
     try {
-      const result = await queryFnRef.current()
-
-      console.log("[v0] useOptimizedQuery - Query result:", result)
+      const result = await queryFn()
 
       // Cache the result
       queryCache.set(queryKey, {
@@ -74,16 +70,14 @@ export function useOptimizedQuery<T>({
 
       setData(result)
       setIsStale(false)
-      console.log("[v0] useOptimizedQuery - Data set successfully")
     } catch (err) {
       if (err instanceof Error && err.name !== "AbortError") {
         setError(err)
-        console.error("[v0] useOptimizedQuery - Error:", err)
       }
     } finally {
       setIsLoading(false)
     }
-  }, [queryKey, enabled, staleTime]) // Remove queryFn from dependencies
+  }, [queryKey, queryFn, enabled, staleTime])
 
   const refetch = useCallback(async () => {
     // Force refetch by removing from cache

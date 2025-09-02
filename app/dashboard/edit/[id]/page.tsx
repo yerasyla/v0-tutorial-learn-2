@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { SolanaAuth } from "@/lib/solana-auth"
+import { WalletAuth } from "@/lib/wallet-auth"
 import { getCourseForEdit } from "@/app/actions/secure-course-actions"
 import CourseEditor from "@/components/course-editor"
 
@@ -16,7 +16,7 @@ export default function EditCoursePage() {
   useEffect(() => {
     async function loadCourse() {
       try {
-        const session = SolanaAuth.getSession()
+        const session = WalletAuth.getSession()
         if (!session) {
           router.push("/")
           return

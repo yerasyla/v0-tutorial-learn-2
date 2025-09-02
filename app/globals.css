@@ -4,15 +4,14 @@
 
 @layer base {
   :root {
-    /* Light theme colors based on official Solana brand design */
+    /* Light theme colors based on Figma design */
     --background: 0 0% 100%;
     --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 3.9%;
-    /* Updated primary to use official Solana Purple */
-    --primary: 258 100% 65%; /* #9945FF - Solana Purple */
+    --primary: 38 92% 50%;
     --primary-foreground: 0 0% 98%;
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9%;
@@ -24,46 +23,45 @@
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 89.8%;
     --input: 0 0% 89.8%;
-    --ring: 258 100% 65%;
+    --ring: 38 92% 50%;
     --radius: 0.75rem;
 
-    /* Updated brand colors to use official Solana brand colors */
-    --brand-primary: 258 100% 65%; /* #9945FF - Solana Purple */
-    --brand-secondary: 158 100% 53%; /* #14F195 - Solana Green */
-    --brand-accent: 158 100% 46%; /* Darker green for accents */
-    --brand-light: 258 100% 97%; /* Light purple tint */
-    --brand-dark: 258 100% 20%; /* Dark purple */
+    /* Tutorial brand colors */
+    --brand-primary: 38 92% 50%; /* #faa400 */
+    --brand-secondary: 39 96% 40%; /* #cb8b00 */
+    --brand-accent: 42 96% 89%; /* #ffcf65 */
+    --brand-light: 44 100% 94%; /* #fff9e6 */
+    --brand-dark: 33 94% 13%; /* #281a02 */
   }
 
   .dark {
-    /* Dark theme colors based on official Solana brand design */
-    --background: 0 0% 5%; /* Very dark background like Solana */
+    /* Dark theme colors based on Figma design */
+    --background: 0 0% 6.3%; /* #101014 */
     --foreground: 0 0% 98%;
-    --card: 0 0% 8%; /* Slightly lighter than background */
+    --card: 0 0% 9.8%; /* #18181b */
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 5%;
+    --popover: 0 0% 6.3%;
     --popover-foreground: 0 0% 98%;
-    /* Updated primary to use official Solana Purple */
-    --primary: 258 100% 65%; /* #9945FF - Solana Purple */
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 12%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 6.3%;
+    --secondary: 0 0% 14.9%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 12%;
+    --muted: 0 0% 14.9%;
     --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 12%;
+    --accent: 0 0% 14.9%;
     --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 20%; /* Lighter border for dark theme */
-    --input: 0 0% 12%;
-    --ring: 258 100% 65%;
+    --border: 0 0% 27.5%; /* #71717a */
+    --input: 0 0% 14.9%;
+    --ring: 38 92% 50%;
 
-    /* Updated brand colors to use official Solana brand colors */
-    --brand-primary: 258 100% 65%; /* #9945FF - Solana Purple */
-    --brand-secondary: 158 100% 53%; /* #14F195 - Solana Green */
-    --brand-accent: 158 100% 46%; /* Darker green for accents */
-    --brand-light: 258 100% 97%; /* Light purple tint */
-    --brand-dark: 258 100% 20%; /* Dark purple */
+    /* Tutorial brand colors remain consistent */
+    --brand-primary: 38 92% 50%; /* #faa400 */
+    --brand-secondary: 39 96% 40%; /* #cb8b00 */
+    --brand-accent: 42 96% 89%; /* #ffcf65 */
+    --brand-light: 44 100% 94%; /* #fff9e6 */
+    --brand-dark: 33 94% 13%; /* #281a02 */
   }
 
   * {
@@ -95,34 +93,5 @@
   }
   .hover\:bg-brand-secondary:hover {
     background-color: hsl(var(--brand-secondary));
-  }
-  .bg-brand-secondary {
-    background-color: hsl(var(--brand-secondary));
-  }
-  .text-brand-secondary {
-    color: hsl(var(--brand-secondary));
-  }
-  .bg-brand-accent {
-    background-color: hsl(var(--brand-accent));
-  }
-  .text-brand-accent {
-    color: hsl(var(--brand-accent));
-  }
-  .border-brand-secondary {
-    border-color: hsl(var(--brand-secondary));
-  }
-  .border-brand-accent {
-    border-color: hsl(var(--brand-accent));
-  }
-
-  /* Updated Solana gradient to use official brand colors */
-  .bg-solana-gradient {
-    background: linear-gradient(90deg, #14f195 0%, #9945ff 100%);
-  }
-  .text-solana-gradient {
-    background: linear-gradient(90deg, #14f195 0%, #9945ff 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
   }
 }

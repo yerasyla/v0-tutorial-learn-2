@@ -1,11 +1,5 @@
+import { SealCheck } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
-
-const CheckCircleIcon = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2">
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-    <polyline points="22,4 12,14.01 9,11.01" />
-  </svg>
-)
 
 interface VerifiedBadgeProps {
   isVerified: boolean
@@ -45,10 +39,12 @@ export function VerifiedBadge({ isVerified, size = "md", className, variant = "d
           className,
         )}
       >
-        <CheckCircleIcon size={iconSizes[size]} />
+        <SealCheck weight="fill" size={iconSizes[size]} className="text-blue-500" />
       </div>
     )
   }
 
-  return <CheckCircleIcon size={iconSizes[size]} />
+  return (
+    <SealCheck weight="fill" className={cn("text-blue-500 inline-block flex-shrink-0", sizeClasses[size], className)} />
+  )
 }
