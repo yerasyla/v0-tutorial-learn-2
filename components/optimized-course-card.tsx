@@ -20,17 +20,17 @@ interface OptimizedCourseCardProps {
 
 export function OptimizedCourseCard({ course }: OptimizedCourseCardProps) {
   const getFirstVideoThumbnail = (lessons: Lesson[]) => {
-    if (lessons.length === 0) return "/placeholder.svg?height=160&width=280"
+    if (!lessons || lessons.length === 0) return "/placeholder.svg?height=160&width=280"
 
     const firstLesson = lessons[0]
 
-    // Match regular YouTube videos
+    if (!firstLesson.youtube_url) return "/placeholder.svg?height=160&width=280"
+
     let match = firstLesson.youtube_url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)
     if (match) {
       return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
     }
 
-    // Match YouTube Shorts
     match = firstLesson.youtube_url.match(/youtube\.com\/shorts\/([^&\n?#]+)/)
     if (match) {
       return `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`
@@ -43,10 +43,14 @@ export function OptimizedCourseCard({ course }: OptimizedCourseCardProps) {
     if (course.user_profiles && course.user_profiles.length > 0) {
       return (
         course.user_profiles[0].display_name ||
-        `${course.creator_wallet.slice(0, 6)}...${course.creator_wallet.slice(-4)}`
+        (course.creator_wallet
+          ? `${course.creator_wallet.slice(0, 6)}...${course.creator_wallet.slice(-4)}`
+          : "Unknown Creator")
       )
     }
-    return `${course.creator_wallet.slice(0, 6)}...${course.creator_wallet.slice(-4)}`
+    return course.creator_wallet
+      ? `${course.creator_wallet.slice(0, 6)}...${course.creator_wallet.slice(-4)}`
+      : "Unknown Creator"
   }
 
   const isCreatorVerified = () => {
@@ -69,7 +73,7 @@ export function OptimizedCourseCard({ course }: OptimizedCourseCardProps) {
           />
           <div className="absolute top-2 right-2">
             <Badge variant="secondary" className="bg-white/90 text-gray-900 font-medium text-xs px-2 py-1">
-              {course.lessons.length} lesson{course.lessons.length !== 1 ? "s" : ""}
+              {course.lessons?.length || 0} lesson{(course.lessons?.length || 0) !== 1 ? "s" : ""}
             </Badge>
           </div>
         </div>

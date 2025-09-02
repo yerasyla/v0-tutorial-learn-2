@@ -4,16 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useWeb3 } from "@/contexts/web3-context"
+import { useSolana } from "@/contexts/solana-context"
 import { toast } from "@/hooks/use-toast"
 import { Copy, Users, Gift, TrendingUp } from "lucide-react"
 import { useState } from "react"
 
 export default function ReferralPage() {
-  const { account, isConnected } = useWeb3()
+  const { address, isConnected } = useSolana()
   const [copied, setCopied] = useState(false)
 
-  const referralLink = account ? `${window.location.origin}?ref=${account}` : ""
+  const referralLink = address ? `${window.location.origin}?ref=${address}` : ""
 
   const copyReferralLink = async () => {
     if (!referralLink) return
@@ -40,11 +40,11 @@ export default function ReferralPage() {
       <div className="max-w-4xl mx-auto px-4 py-12">
         <Card>
           <CardHeader>
-            <CardTitle>Connect Your Wallet</CardTitle>
-            <CardDescription>You need to connect your wallet to access the referral program</CardDescription>
+            <CardTitle>Connect Your Solana Wallet</CardTitle>
+            <CardDescription>You need to connect your Solana wallet to access the referral program</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-600">Please connect your Web3 wallet to start earning referral rewards.</p>
+            <p className="text-gray-600">Please connect your Solana wallet to start earning referral rewards.</p>
           </CardContent>
         </Card>
       </div>
@@ -55,7 +55,7 @@ export default function ReferralPage() {
     <div className="max-w-4xl mx-auto px-4 py-12">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-4">Referral Program</h1>
-        <p className="text-gray-600">Earn rewards by inviting friends to join Tutorial Platform</p>
+        <p className="text-gray-600">Earn SOL rewards by inviting friends to join Tutorial Platform</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -80,8 +80,8 @@ export default function ReferralPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">0 TUT</div>
-            <p className="text-sm text-gray-600">Tokens earned</p>
+            <div className="text-3xl font-bold">0 SOL</div>
+            <p className="text-sm text-gray-600">SOL earned</p>
           </CardContent>
         </Card>
       </div>
@@ -92,7 +92,7 @@ export default function ReferralPage() {
             <Gift className="h-5 w-5 mr-2 text-purple-600" />
             Your Referral Link
           </CardTitle>
-          <CardDescription>Share this link with friends to earn rewards when they join</CardDescription>
+          <CardDescription>Share this link with friends to earn SOL rewards when they join</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -106,7 +106,7 @@ export default function ReferralPage() {
             </div>
           </div>
           <p className="text-sm text-gray-600">
-            When someone signs up using your referral link and creates their first course, you'll earn 10 TUT tokens!
+            When someone signs up using your referral link and creates their first course, you'll earn 0.01 SOL!
           </p>
         </CardContent>
       </Card>
@@ -132,7 +132,7 @@ export default function ReferralPage() {
               </div>
               <div>
                 <h4 className="font-semibold">Friend Joins</h4>
-                <p className="text-gray-600">Your friend connects their wallet and creates an account</p>
+                <p className="text-gray-600">Your friend connects their Solana wallet and creates an account</p>
               </div>
             </div>
             <div className="flex items-start space-x-3">
@@ -140,8 +140,8 @@ export default function ReferralPage() {
                 3
               </div>
               <div>
-                <h4 className="font-semibold">Earn Rewards</h4>
-                <p className="text-gray-600">Get 10 TUT tokens when they create their first course</p>
+                <h4 className="font-semibold">Earn SOL Rewards</h4>
+                <p className="text-gray-600">Get 0.01 SOL when they create their first course</p>
               </div>
             </div>
           </div>

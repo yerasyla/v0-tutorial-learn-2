@@ -5,7 +5,7 @@ import type React from "react"
 import { useWalletGuard } from "@/hooks/use-wallet-guard"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useWeb3 } from "@/contexts/web3-context"
+import { useSolana } from "@/contexts/solana-context"
 import { Wallet, Spinner } from "@phosphor-icons/react"
 
 interface WalletGuardProps {
@@ -18,13 +18,13 @@ export function WalletGuard({ children, requireConnection = false, fallback }: W
   const { isReady, isConnected } = useWalletGuard({
     requireConnection,
   })
-  const { connectWallet, isConnecting } = useWeb3()
+  const { connect, isConnecting } = useSolana()
 
   const handleConnect = async () => {
     try {
-      await connectWallet()
+      await connect()
     } catch (error) {
-      console.error("Failed to connect wallet:", error)
+      console.error("Failed to connect Solana wallet:", error)
     }
   }
 
@@ -40,11 +40,11 @@ export function WalletGuard({ children, requireConnection = false, fallback }: W
           <CardHeader className="text-center">
             <CardTitle className="flex items-center justify-center gap-3 text-xl text-foreground">
               <Wallet size={24} className="text-brand-primary" />
-              Wallet Required
+              Solana Wallet Required
             </CardTitle>
           </CardHeader>
           <CardContent className="text-center space-y-4">
-            <p className="text-muted-foreground">This page requires a wallet connection to continue.</p>
+            <p className="text-muted-foreground">This page requires a Solana wallet connection to continue.</p>
 
             <Button
               onClick={handleConnect}
@@ -59,7 +59,7 @@ export function WalletGuard({ children, requireConnection = false, fallback }: W
               ) : (
                 <div className="flex items-center gap-2">
                   <Wallet size={18} />
-                  Connect Wallet
+                  Connect Solana Wallet
                 </div>
               )}
             </Button>

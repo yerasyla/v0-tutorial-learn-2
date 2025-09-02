@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Trash2, Plus, GripVertical, ChevronUp, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import { updateCourse } from "@/app/actions/secure-course-actions"
-import { WalletAuth } from "@/lib/wallet-auth"
+import { SolanaAuth } from "@/lib/solana-auth"
 
 interface Lesson {
   id?: string
@@ -118,7 +118,7 @@ export default function CourseEditor({ course }: CourseEditorProps) {
     }
 
     try {
-      const session = WalletAuth.getSession()
+      const session = SolanaAuth.getSession()
       if (!session) {
         toast.error("Please authenticate with your wallet first")
         return

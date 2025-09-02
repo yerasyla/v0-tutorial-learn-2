@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Logo } from "@/components/logo"
-import { useWeb3 } from "@/contexts/web3-context"
-import { WalletAuth } from "@/lib/wallet-auth"
+import { useSolana } from "@/contexts/solana-context"
+import { SolanaAuth } from "@/lib/solana-auth"
 import { toast } from "@/hooks/use-toast"
 import { Plus, Trash, DotsSixVertical } from "@phosphor-icons/react"
 import { createCourseWithLessons } from "@/app/actions/course-actions"
@@ -29,7 +29,7 @@ export default function CreateCoursePage() {
   const [lessons, setLessons] = useState<LessonForm[]>([{ id: "1", title: "", description: "", youtube_url: "" }])
   const [isLoading, setIsLoading] = useState(false)
 
-  const { address: account, isConnected } = useWeb3()
+  const { publicKey, isConnected } = useSolana()
   const router = useRouter()
 
   /* ---------- helpers ---------- */
@@ -54,7 +54,7 @@ export default function CreateCoursePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!isConnected || !account) {
+    if (!isConnected || !publicKey) {
       toast({
         title: "Wallet not connected",
         description: "Please connect your wallet to create a course",
@@ -82,8 +82,7 @@ export default function CreateCoursePage() {
       return
     }
 
-    /* get current signed session */
-    const session = WalletAuth.getSessionForAPI()
+    const session = SolanaAuth.getSessionForAPI()
     if (!session) {
       toast({
         title: "Authentication required",

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useWeb3 } from "@/contexts/web3-context"
+import { useSolana } from "@/contexts/solana-context"
 
 interface UseWalletGuardOptions {
   requireConnection?: boolean
@@ -9,7 +9,7 @@ interface UseWalletGuardOptions {
 }
 
 export function useWalletGuard(options: UseWalletGuardOptions = {}) {
-  const { isConnected, isConnecting, connectWallet } = useWeb3()
+  const { isConnected, isConnecting, connect } = useSolana()
 
   const [isReady, setIsReady] = useState(false)
 
@@ -33,10 +33,10 @@ export function useWalletGuard(options: UseWalletGuardOptions = {}) {
   const requireWalletConnection = async () => {
     if (!isConnected) {
       try {
-        await connectWallet()
+        await connect()
         return true
       } catch (error) {
-        console.error("Failed to connect wallet:", error)
+        console.error("Failed to connect Solana wallet:", error)
         return false
       }
     }

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { supabase } from "@/lib/supabase"
-import { WarningCircle } from "@phosphor-icons/react"
 import { OptimizedPaginatedCourses } from "@/components/optimized-paginated-courses"
 
 export default function CoursesPage() {
@@ -17,7 +16,7 @@ export default function CoursesPage() {
 
   const checkTablesExist = async () => {
     try {
-      const { error } = await supabase.from("courses").select("id", { head: true, limit: 1 })
+      const { error } = await supabase.from("courses_sol").select("id", { head: true, limit: 1 })
 
       if (error && error.code === "PGRST116") {
         setTablesExist(false)
@@ -35,7 +34,21 @@ export default function CoursesPage() {
       <div className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <Alert className="border-2 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
-            <WarningCircle size={20} className="text-orange-600 dark:text-orange-400" />
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-orange-600 dark:text-orange-400"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
             <AlertDescription className="text-orange-800 dark:text-orange-200 text-base leading-relaxed ml-2">
               Database tables need to be created. Please run the SQL script in your Supabase dashboard to set up the
               database.

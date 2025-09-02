@@ -1,7 +1,7 @@
 "use server"
 
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { WalletAuth, type WalletSession } from "@/lib/wallet-auth"
+import { SolanaAuth, type SolanaSession } from "@/lib/solana-auth"
 import { revalidatePath } from "next/cache"
 
 export interface DashboardData {
@@ -39,10 +39,10 @@ export interface DashboardData {
 }
 
 /**
- * Verify wallet session and extract wallet address
+ * Verify Solana wallet session and extract wallet address
  */
-function verifyWalletSession(session: WalletSession): string {
-  console.log("Verifying wallet session:", {
+function verifySolanaSession(session: SolanaSession): string {
+  console.log("Verifying Solana session:", {
     address: session?.address,
     timestamp: session?.timestamp,
     hasSignature: !!session?.signature,
@@ -53,15 +53,15 @@ function verifyWalletSession(session: WalletSession): string {
   }
 
   // Verify signature
-  if (!WalletAuth.verifySession(session)) {
+  if (!SolanaAuth.verifySession(session)) {
     throw new Error("Invalid or expired authentication session")
   }
 
   console.log("Session verified successfully for:", session.address)
-  return session.address.toLowerCase()
+  return session.address
 }
 
-export async function getDashboardData(session: WalletSession): Promise<DashboardData> {
+export async function getDashboardData(session: SolanaSession): Promise<DashboardData> {
   console.log("getDashboardData called with session:", {
     address: session?.address,
     hasSession: !!session,
@@ -69,11 +69,11 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
 
   try {
     // Verify session
-    const authenticatedWallet = verifyWalletSession(session)
+    const authenticatedWallet = verifySolanaSession(session)
 
-    // Fetch user profile
+    // Fetch user profile from _sol table
     const { data: profile, error: profileError } = await supabaseAdmin
-      .from("user_profiles")
+      .from("user_profiles_sol")
       .select("*")
       .eq("wallet_address", authenticatedWallet)
       .single()
@@ -83,12 +83,12 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
       throw new Error(`Failed to fetch profile: ${profileError.message}`)
     }
 
-    // Fetch user's courses with lesson counts
+    // Fetch user's courses with lesson counts from _sol tables
     const { data: courses, error: coursesError } = await supabaseAdmin
-      .from("courses")
+      .from("courses_sol")
       .select(`
         *,
-        lessons(id, title, order_index)
+        lessons_sol(id, title, order_index)
       `)
       .eq("creator_wallet", authenticatedWallet)
       .order("created_at", { ascending: false })
@@ -98,13 +98,19 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
       throw new Error(`Failed to fetch courses: ${coursesError.message}`)
     }
 
+    const mappedCourses =
+      courses?.map((course) => ({
+        ...course,
+        lessons: course.lessons_sol || [],
+      })) || []
+
     // Calculate stats
-    const totalCourses = courses?.length || 0
-    const totalLessons = courses?.reduce((sum, course) => sum + (course.lessons?.length || 0), 0) || 0
+    const totalCourses = mappedCourses.length
+    const totalLessons = mappedCourses.reduce((sum, course) => sum + (course.lessons?.length || 0), 0)
 
     const dashboardData: DashboardData = {
       profile: profile || null,
-      courses: courses || [],
+      courses: mappedCourses,
       stats: {
         totalCourses,
         totalLessons,
@@ -124,7 +130,7 @@ export async function getDashboardData(session: WalletSession): Promise<Dashboar
   }
 }
 
-export async function deleteCourseAction(courseId: string, session: WalletSession) {
+export async function deleteCourseAction(courseId: string, session: SolanaSession) {
   console.log("deleteCourseAction called with:", {
     courseId,
     sessionAddress: session?.address,
@@ -133,11 +139,11 @@ export async function deleteCourseAction(courseId: string, session: WalletSessio
 
   try {
     // Verify session
-    const authenticatedWallet = verifyWalletSession(session)
+    const authenticatedWallet = verifySolanaSession(session)
 
     // First, verify the user owns this course
     const { data: existingCourse, error: fetchError } = await supabaseAdmin
-      .from("courses")
+      .from("courses_sol")
       .select("creator_wallet")
       .eq("id", courseId)
       .single()
@@ -146,14 +152,14 @@ export async function deleteCourseAction(courseId: string, session: WalletSessio
       throw new Error(`Course not found: ${fetchError.message}`)
     }
 
-    if (existingCourse.creator_wallet.toLowerCase() !== authenticatedWallet) {
+    if (existingCourse.creator_wallet !== authenticatedWallet) {
       throw new Error("Unauthorized: You can only delete your own courses")
     }
 
     console.log("Deleting course:", courseId)
 
     // Delete lessons first (due to foreign key constraint)
-    const { error: lessonsError } = await supabaseAdmin.from("lessons").delete().eq("course_id", courseId)
+    const { error: lessonsError } = await supabaseAdmin.from("lessons_sol").delete().eq("course_id", courseId)
 
     if (lessonsError) {
       console.error("Lessons deletion error:", lessonsError)
@@ -161,7 +167,7 @@ export async function deleteCourseAction(courseId: string, session: WalletSessio
     }
 
     // Then delete the course
-    const { error: courseError } = await supabaseAdmin.from("courses").delete().eq("id", courseId)
+    const { error: courseError } = await supabaseAdmin.from("courses_sol").delete().eq("id", courseId)
 
     if (courseError) {
       console.error("Course deletion error:", courseError)
