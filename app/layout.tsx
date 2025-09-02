@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     ],
   },
   manifest: "/site.webmanifest",
-    generator: 'v0.app'
+  generator: "v0.app",
 }
 
 export default function RootLayout({
@@ -72,7 +72,7 @@ export default function RootLayout({
 
         {/* Apple and mobile icons */}
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="mask-icon" href="/favicon.ico" color="#ffa500" />
+        <link rel="mask-icon" href="/favicon.ico" color="#9945FF" />
 
         {/* Android and PWA icons */}
         <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
@@ -82,8 +82,8 @@ export default function RootLayout({
         <link rel="manifest" href="/site.webmanifest" />
 
         {/* Theme and tile colors */}
-        <meta name="theme-color" content="#ffa500" />
-        <meta name="msapplication-TileColor" content="#ffa500" />
+        <meta name="theme-color" content="#9945FF" />
+        <meta name="msapplication-TileColor" content="#9945FF" />
         <meta name="msapplication-TileImage" content="/android-chrome-192x192.png" />
         <meta name="msapplication-config" content="/browserconfig.xml" />
 

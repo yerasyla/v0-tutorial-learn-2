@@ -40,15 +40,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Save theme to localStorage and update document class
     localStorage.setItem("tutorial-theme", theme)
 
+    document.documentElement.classList.remove("dark", "light")
+
     if (theme === "dark") {
       document.documentElement.classList.add("dark")
-      document.documentElement.classList.remove("light")
+      document.documentElement.setAttribute("data-theme", "dark")
       console.log("[v0] Applied dark theme classes")
     } else {
       document.documentElement.classList.add("light")
-      document.documentElement.classList.remove("dark")
+      document.documentElement.setAttribute("data-theme", "light")
       console.log("[v0] Applied light theme classes")
     }
+
+    document.documentElement.style.colorScheme = theme
   }, [theme, mounted])
 
   const toggleTheme = () => {

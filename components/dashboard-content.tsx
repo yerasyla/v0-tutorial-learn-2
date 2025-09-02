@@ -117,7 +117,7 @@ export default function DashboardContent({ initialData }: DashboardContentProps)
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <AlertCircle className="h-4 w-4 text-purple-500" />
                   <span className="text-sm font-medium">Incomplete</span>
                 </>
               )}

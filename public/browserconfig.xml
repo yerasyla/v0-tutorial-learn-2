@@ -3,7 +3,8 @@
     <msapplication>
         <tile>
             <square150x150logo src="/android-chrome-192x192.png"/>
-            <TileColor>#ffa500</TileColor>
+             Changed orange to Solana purple 
+            <TileColor>#9945FF</TileColor>
         </tile>
     </msapplication>
 </browserconfig>

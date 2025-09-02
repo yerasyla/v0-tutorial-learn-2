@@ -28,7 +28,7 @@ const NETWORK_OPTIONS: NetworkOption[] = [
     name: "BNB Smart Chain",
     icon: "🟡",
     description: "Binance Smart Chain",
-    color: "text-yellow-600",
+    color: "text-purple-600",
   },
   {
     chainId: "0x89",
@@ -128,7 +128,7 @@ export function NetworkSwitchModal({ isOpen, onClose, targetChainId }: NetworkSw
                     isCurrent
                       ? "border-green-300 bg-green-50 dark:border-green-700 dark:bg-green-950"
                       : isTarget
-                        ? "border-brand-primary bg-orange-50 dark:bg-orange-950"
+                        ? "border-brand-primary bg-purple-50 dark:bg-purple-950"
                         : "border-border hover:border-brand-primary"
                   }`}
                 >

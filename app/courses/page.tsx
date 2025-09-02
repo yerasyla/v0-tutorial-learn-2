@@ -33,7 +33,7 @@ export default function CoursesPage() {
     return (
       <div className="min-h-screen bg-background">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <Alert className="border-2 border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
+          <Alert className="border-2 border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950">
             <svg
               width="20"
               height="20"
@@ -43,13 +43,13 @@ export default function CoursesPage() {
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="text-orange-600 dark:text-orange-400"
+              className="text-purple-600 dark:text-purple-400"
             >
               <circle cx="12" cy="12" r="10" />
               <line x1="12" y1="8" x2="12" y2="12" />
               <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            <AlertDescription className="text-orange-800 dark:text-orange-200 text-base leading-relaxed ml-2">
+            <AlertDescription className="text-purple-800 dark:text-purple-200 text-base leading-relaxed ml-2">
               Database tables need to be created. Please run the SQL script in your Supabase dashboard to set up the
               database.
             </AlertDescription>
