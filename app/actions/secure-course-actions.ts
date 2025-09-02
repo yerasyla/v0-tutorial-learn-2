@@ -1,7 +1,7 @@
 "use server"
 
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { WalletAuth, type WalletSession } from "@/lib/wallet-auth"
+import { SolanaAuth, type SolanaSession } from "@/lib/solana-auth"
 import { revalidatePath } from "next/cache"
 
 export interface CourseUpdateData {
@@ -18,10 +18,10 @@ export interface LessonUpdateData {
 }
 
 /**
- * Verify wallet session and extract wallet address
+ * Verify Solana session and extract wallet address
  */
-function verifyWalletSession(session: WalletSession): string {
-  console.log("Verifying wallet session:", {
+function verifySolanaSession(session: SolanaSession): string {
+  console.log("Verifying Solana session:", {
     address: session?.address,
     timestamp: session?.timestamp,
     hasSignature: !!session?.signature,
@@ -32,18 +32,18 @@ function verifyWalletSession(session: WalletSession): string {
   }
 
   // Verify signature
-  if (!WalletAuth.verifySession(session)) {
+  if (!SolanaAuth.verifySession(session)) {
     throw new Error("Invalid or expired authentication session")
   }
 
   console.log("Session verified successfully for:", session.address)
-  return session.address.toLowerCase()
+  return session.address
 }
 
 /**
  * Get course for editing
  */
-export async function getCourseForEdit(courseId: string, session: WalletSession) {
+export async function getCourseForEdit(courseId: string, session: SolanaSession) {
   console.log("getCourseForEdit called with:", {
     courseId,
     sessionAddress: session?.address,
@@ -51,17 +51,17 @@ export async function getCourseForEdit(courseId: string, session: WalletSession)
 
   try {
     // Verify session
-    const authenticatedWallet = verifyWalletSession(session)
+    const authenticatedWallet = verifySolanaSession(session)
 
     // Set wallet context
     await supabaseAdmin.rpc("set_wallet_context", { wallet_address: authenticatedWallet })
 
     // Fetch course with lessons
     const { data: course, error } = await supabaseAdmin
-      .from("courses")
+      .from("courses_sol")
       .select(`
         *,
-        lessons (*)
+        lessons_sol (*)
       `)
       .eq("id", courseId)
       .eq("creator_wallet", authenticatedWallet)
@@ -74,13 +74,18 @@ export async function getCourseForEdit(courseId: string, session: WalletSession)
       throw new Error(`Failed to fetch course: ${error.message}`)
     }
 
+    const courseWithLessons = {
+      ...course,
+      lessons: course.lessons_sol || [],
+    }
+
     // Sort lessons by order_index
-    if (course.lessons) {
-      course.lessons.sort((a: any, b: any) => a.order_index - b.order_index)
+    if (courseWithLessons.lessons) {
+      courseWithLessons.lessons.sort((a: any, b: any) => a.order_index - b.order_index)
     }
 
     console.log("Course fetched successfully for editing")
-    return course
+    return courseWithLessons
   } catch (error: any) {
     console.error("Error in getCourseForEdit:", error)
     throw error
@@ -94,7 +99,7 @@ export async function updateCourse(
   courseId: string,
   courseData: CourseUpdateData,
   lessons: LessonUpdateData[],
-  session: WalletSession,
+  session: SolanaSession,
 ) {
   console.log("updateCourse called with:", {
     courseId,
@@ -105,14 +110,14 @@ export async function updateCourse(
 
   try {
     // Verify session
-    const authenticatedWallet = verifyWalletSession(session)
+    const authenticatedWallet = verifySolanaSession(session)
 
     // Set wallet context
     await supabaseAdmin.rpc("set_wallet_context", { wallet_address: authenticatedWallet })
 
     // Verify ownership
     const { data: existingCourse, error: fetchError } = await supabaseAdmin
-      .from("courses")
+      .from("courses_sol")
       .select("creator_wallet")
       .eq("id", courseId)
       .single()
@@ -121,13 +126,13 @@ export async function updateCourse(
       throw new Error(`Course not found: ${fetchError.message}`)
     }
 
-    if (existingCourse.creator_wallet.toLowerCase() !== authenticatedWallet) {
+    if (existingCourse.creator_wallet !== authenticatedWallet) {
       throw new Error("Unauthorized: You can only edit your own courses")
     }
 
     // Update course
     const { error: courseError } = await supabaseAdmin
-      .from("courses")
+      .from("courses_sol")
       .update({
         title: courseData.title,
         description: courseData.description,
@@ -140,7 +145,7 @@ export async function updateCourse(
     }
 
     // Delete existing lessons
-    const { error: deleteError } = await supabaseAdmin.from("lessons").delete().eq("course_id", courseId)
+    const { error: deleteError } = await supabaseAdmin.from("lessons_sol").delete().eq("course_id", courseId)
 
     if (deleteError) {
       throw new Error(`Failed to delete existing lessons: ${deleteError.message}`)
@@ -157,7 +162,7 @@ export async function updateCourse(
         updated_at: new Date().toISOString(),
       }))
 
-      const { error: insertError } = await supabaseAdmin.from("lessons").insert(lessonsToInsert)
+      const { error: insertError } = await supabaseAdmin.from("lessons_sol").insert(lessonsToInsert)
 
       if (insertError) {
         throw new Error(`Failed to insert lessons: ${insertError.message}`)
@@ -177,16 +182,16 @@ export async function updateCourse(
 /**
  * Delete course
  */
-export async function deleteCourse(courseId: string, session: WalletSession) {
+export async function deleteCourse(courseId: string, session: SolanaSession) {
   console.log("deleteCourse called with:", { courseId, sessionAddress: session?.address })
 
   try {
     // Verify session
-    const walletAddress = verifyWalletSession(session)
+    const walletAddress = verifySolanaSession(session)
 
     // First, verify the user owns this course
     const { data: existingCourse, error: courseCheckError } = await supabaseAdmin
-      .from("courses")
+      .from("courses_sol")
       .select("creator_wallet, title")
       .eq("id", courseId)
       .single()
@@ -197,12 +202,12 @@ export async function deleteCourse(courseId: string, session: WalletSession) {
       throw new Error(`Failed to verify course ownership: ${courseCheckError.message}`)
     }
 
-    if (!existingCourse || existingCourse.creator_wallet.toLowerCase() !== walletAddress) {
+    if (!existingCourse || existingCourse.creator_wallet !== walletAddress) {
       throw new Error("Unauthorized: You can only delete your own courses")
     }
 
     // Delete all lessons first (due to foreign key constraint)
-    const { error: lessonsDeleteError } = await supabaseAdmin.from("lessons").delete().eq("course_id", courseId)
+    const { error: lessonsDeleteError } = await supabaseAdmin.from("lessons_sol").delete().eq("course_id", courseId)
 
     console.log("Lessons deletion result:", { lessonsDeleteError })
 
@@ -211,7 +216,7 @@ export async function deleteCourse(courseId: string, session: WalletSession) {
     }
 
     // Delete the course
-    const { error: courseDeleteError } = await supabaseAdmin.from("courses").delete().eq("id", courseId)
+    const { error: courseDeleteError } = await supabaseAdmin.from("courses_sol").delete().eq("id", courseId)
 
     console.log("Course deletion result:", { courseDeleteError })
 
@@ -235,21 +240,21 @@ export async function deleteCourse(courseId: string, session: WalletSession) {
 /**
  * Delete lesson
  */
-export async function deleteLessonSecure(lessonId: string, session: WalletSession) {
+export async function deleteLessonSecure(lessonId: string, session: SolanaSession) {
   console.log("deleteLessonSecure called with:", { lessonId, sessionAddress: session?.address })
 
   try {
     // Verify session
-    const walletAddress = verifyWalletSession(session)
+    const walletAddress = verifySolanaSession(session)
 
     // Fetch the lesson and the course creator
     const { data: lesson, error: fetchError } = await supabaseAdmin
-      .from("lessons")
+      .from("lessons_sol")
       .select(
         `
         id,
         course_id,
-        courses!inner (
+        courses_sol!inner (
           creator_wallet
         )
       `,
@@ -264,12 +269,12 @@ export async function deleteLessonSecure(lessonId: string, session: WalletSessio
     }
 
     // @ts-ignore - Supabase types can be tricky with joins
-    if (!lesson || lesson.courses.creator_wallet.toLowerCase() !== walletAddress) {
+    if (!lesson || lesson.courses_sol.creator_wallet !== walletAddress) {
       throw new Error("Unauthorized: You can only delete lessons from your own courses")
     }
 
     // Delete the lesson
-    const { error: deleteError } = await supabaseAdmin.from("lessons").delete().eq("id", lessonId)
+    const { error: deleteError } = await supabaseAdmin.from("lessons_sol").delete().eq("id", lessonId)
 
     console.log("Lesson deletion result:", { deleteError })
 
@@ -288,12 +293,12 @@ export async function deleteLessonSecure(lessonId: string, session: WalletSessio
 /**
  * Create course
  */
-export async function createCourse(formData: FormData, session: WalletSession) {
+export async function createCourse(formData: FormData, session: SolanaSession) {
   console.log("createCourse called with session:", session?.address)
 
   try {
     // Verify session
-    const walletAddress = verifyWalletSession(session)
+    const walletAddress = verifySolanaSession(session)
 
     const title = formData.get("title") as string
     const description = formData.get("description") as string
@@ -310,7 +315,7 @@ export async function createCourse(formData: FormData, session: WalletSession) {
 
     console.log("Creating course with data:", courseData)
 
-    const { data: course, error } = await supabaseAdmin.from("courses").insert([courseData]).select().single()
+    const { data: course, error } = await supabaseAdmin.from("courses_sol").insert([courseData]).select().single()
 
     console.log("Course creation result:", { course, error })
 

@@ -1,16 +1,35 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-import { WalletAuth } from "@/lib/wallet-auth"
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
+import { SolanaAuth } from "@/lib/solana-auth"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+async function createClient() {
+  const cookieStore = await cookies()
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-})
+  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+        } catch {
+          // Server component context - can be ignored with middleware
+        }
+      },
+    },
+  })
+}
+
+function createAdminClient() {
+  return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    cookies: {
+      getAll: () => [],
+      setAll: () => {},
+    },
+  })
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,9 +43,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Course ID is required" }, { status: 400 })
     }
 
-    // Fetch donations for the course
+    const supabaseAdmin = createAdminClient()
+
     const { data: donations, error } = await supabaseAdmin
-      .from("donations")
+      .from("donations_sol")
       .select("*")
       .eq("course_id", courseId)
       .order("created_at", { ascending: false })
@@ -38,10 +58,10 @@ export async function GET(request: NextRequest) {
 
     console.log("✅ Fetched donations:", donations?.length || 0)
 
-    // Calculate total amount
     const totalAmount =
       donations?.reduce((sum, donation) => {
-        return sum + Number.parseFloat(donation.amount || "0")
+        const amount = Number.parseFloat(donation.amount_sol || "0")
+        return sum + amount
       }, 0) || 0
 
     return NextResponse.json({
@@ -60,55 +80,74 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log("💰 POST /api/donations - Body:", body)
 
-    const { course_id, donor_wallet, amount, tx_hash, session } = body
+    const {
+      course_id,
+      donor_wallet_address,
+      amount_sol,
+      amount_lamports,
+      transaction_signature,
+      block_height,
+      session,
+    } = body
 
-    // Validate required fields
-    if (!course_id || !donor_wallet || !amount || !tx_hash) {
-      console.error("❌ Missing required fields:", { course_id, donor_wallet, amount, tx_hash })
+    if (!course_id || !donor_wallet_address || !amount_sol || !amount_lamports || !transaction_signature) {
+      console.error("❌ Missing required fields:", {
+        course_id,
+        donor_wallet_address,
+        amount_sol,
+        amount_lamports,
+        transaction_signature,
+      })
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
     // Verify wallet session if provided
     if (session) {
-      console.log("🔐 Verifying wallet session...")
-      const isValid = await WalletAuth.verifySignature(session)
+      console.log("🔐 Verifying Solana wallet session...")
+      const isValid = await SolanaAuth.verifySignature(session)
       if (!isValid) {
-        console.error("❌ Invalid wallet session")
+        console.error("❌ Invalid Solana wallet session")
         return NextResponse.json({ error: "Invalid wallet session" }, { status: 401 })
       }
 
       // Verify the session address matches the donor wallet
-      if (session.address.toLowerCase() !== donor_wallet.toLowerCase()) {
+      if (session.address !== donor_wallet_address) {
         console.error("❌ Session address mismatch")
         return NextResponse.json({ error: "Session address mismatch" }, { status: 401 })
       }
-      console.log("✅ Wallet session verified")
+      console.log("✅ Solana wallet session verified")
     }
 
-    // Check if donation with this tx_hash already exists
+    const supabaseAdmin = createAdminClient()
+
     console.log("🔍 Checking for existing donation...")
     const { data: existingDonation } = await supabaseAdmin
-      .from("donations")
+      .from("donations_sol")
       .select("id")
-      .eq("tx_hash", tx_hash)
+      .eq("transaction_signature", transaction_signature)
       .single()
 
     if (existingDonation) {
-      console.log("⚠️ Donation already exists for tx_hash:", tx_hash)
+      console.log("⚠️ Donation already exists for transaction:", transaction_signature)
       return NextResponse.json({ message: "Donation already recorded", donation: existingDonation }, { status: 200 })
     }
 
-    // Insert new donation
-    console.log("💾 Inserting new donation...")
+    console.log("💾 Inserting new SOL donation...")
+    const donationData = {
+      course_id,
+      donor_wallet_address,
+      transaction_signature,
+      amount_lamports,
+      amount_sol: amount_sol.toString(),
+      block_height: block_height || null,
+      confirmation_status: "confirmed",
+      created_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
+    }
+
     const { data: donation, error: insertError } = await supabaseAdmin
-      .from("donations")
-      .insert({
-        course_id,
-        donor_wallet: donor_wallet.toLowerCase(),
-        amount: amount.toString(),
-        tx_hash,
-        created_at: new Date().toISOString(),
-      })
+      .from("donations_sol")
+      .insert(donationData)
       .select()
       .single()
 
@@ -117,7 +156,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to save donation", details: insertError.message }, { status: 500 })
     }
 
-    console.log("✅ Donation saved successfully:", donation)
+    console.log("✅ SOL donation saved successfully:", donation)
     return NextResponse.json({
       success: true,
       donation,

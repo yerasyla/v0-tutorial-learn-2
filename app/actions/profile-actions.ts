@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { supabaseAdmin } from "@/lib/supabase-admin"
-import { WalletAuth, type WalletSession } from "@/lib/wallet-auth"
+import { SolanaAuth, type SolanaSession } from "@/lib/solana-auth"
 
 export interface ProfileUpdateData {
   display_name: string
@@ -13,16 +13,15 @@ export interface ProfileUpdateData {
 }
 
 /**
- * Verify the wallet session and return its lowercase address.
+ * Verify the Solana wallet session and return the wallet address.
  */
-function verifyWalletSession(session: WalletSession): string {
-  console.log("[SERVER] Verifying wallet session:", {
+function verifySolanaSession(session: SolanaSession): string {
+  console.log("[SERVER] Verifying Solana wallet session:", {
     hasSession: !!session,
     address: session?.address,
     timestamp: session?.timestamp,
     hasSignature: !!session?.signature,
     hasMessage: !!session?.message,
-    expiresAt: session?.expiresAt,
     sessionType: typeof session,
   })
 
@@ -39,16 +38,16 @@ function verifyWalletSession(session: WalletSession): string {
     throw new Error("Invalid session structure")
   }
 
-  // Verify signature
-  if (!WalletAuth.verifySession(session)) {
+  // Verify Solana signature
+  if (!SolanaAuth.verifySignature(session)) {
     throw new Error("Invalid or expired authentication session")
   }
 
-  console.log("[SERVER] Session verified successfully for:", session.address)
-  return session.address.toLowerCase()
+  console.log("[SERVER] Solana session verified successfully for:", session.address)
+  return session.address
 }
 
-export async function updateProfile(walletAddress: string, profileData: ProfileUpdateData, session: WalletSession) {
+export async function updateProfile(walletAddress: string, profileData: ProfileUpdateData, session: SolanaSession) {
   console.log("[SERVER] updateProfile called with:", {
     walletAddress,
     sessionAddress: session?.address,
@@ -58,10 +57,10 @@ export async function updateProfile(walletAddress: string, profileData: ProfileU
 
   try {
     // Verify session
-    const authenticatedWallet = verifyWalletSession(session)
+    const authenticatedWallet = verifySolanaSession(session)
 
     // Security check: ensure the authenticated wallet matches the profile being updated
-    if (walletAddress.toLowerCase() !== authenticatedWallet) {
+    if (walletAddress !== authenticatedWallet) {
       throw new Error("Unauthorized: You can only edit your own profile")
     }
 
@@ -69,7 +68,7 @@ export async function updateProfile(walletAddress: string, profileData: ProfileU
     const cleanTwitterHandle = profileData.twitter_handle.replace(/^@/, "")
 
     const updateData = {
-      wallet_address: walletAddress.toLowerCase(),
+      solana_wallet_address: walletAddress,
       display_name: profileData.display_name.trim() || null,
       avatar_url: profileData.avatar_url.trim() || null,
       about_me: profileData.about_me.trim() || null,
@@ -82,9 +81,9 @@ export async function updateProfile(walletAddress: string, profileData: ProfileU
 
     // Use upsert to handle both insert and update
     const { data: profile, error } = await supabaseAdmin
-      .from("user_profiles")
+      .from("user_profiles_sol")
       .upsert(updateData, {
-        onConflict: "wallet_address",
+        onConflict: "solana_wallet_address",
       })
       .select()
       .single()
@@ -110,9 +109,9 @@ export async function getProfile(walletAddress: string) {
 
   try {
     const { data: profile, error } = await supabaseAdmin
-      .from("user_profiles")
+      .from("user_profiles_sol")
       .select("*")
-      .eq("wallet_address", walletAddress.toLowerCase())
+      .eq("solana_wallet_address", walletAddress)
       .single()
 
     console.log("[SERVER] Profile fetch result:", { profile, error })

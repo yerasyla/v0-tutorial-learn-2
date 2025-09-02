@@ -1,22 +1,29 @@
-import { createClient } from "@supabase/supabase-js"
+import { createBrowserClient } from "@supabase/ssr"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase environment variables")
-}
-
-// Client-side Supabase client - READ ONLY due to revoked permissions
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
+console.log("[v0] Supabase environment check:", {
+  url: supabaseUrl ? "SET" : "NOT SET",
+  key: supabaseAnonKey ? "SET" : "NOT SET",
 })
 
-// Note: This client can only read data due to revoked INSERT/UPDATE/DELETE permissions
-// All write operations must go through server actions with proper authentication
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("[v0] Missing Supabase environment variables:", {
+    NEXT_PUBLIC_SUPABASE_URL: supabaseUrl ? "SET" : "MISSING",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey ? "SET" : "MISSING",
+  })
+  throw new Error(
+    `Missing Supabase environment variables: ${!supabaseUrl ? "NEXT_PUBLIC_SUPABASE_URL " : ""}${!supabaseAnonKey ? "NEXT_PUBLIC_SUPABASE_ANON_KEY" : ""}`,
+  )
+}
+
+// Client-side Supabase client using createBrowserClient from @supabase/ssr
+export function createClient() {
+  return createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+}
+
+export const supabase = createClient()
 
 export type Course = {
   id: string

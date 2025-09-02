@@ -2,8 +2,8 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { Web3Provider } from "@/contexts/web3-context"
 import { ThemeProvider } from "@/contexts/theme-context"
+import { SolanaProvider } from "@/contexts/solana-context"
 import { Toaster } from "@/components/ui/toaster"
 import { PerformanceMonitor } from "@/components/performance-monitor"
 import Navbar from "@/components/navbar"
@@ -16,15 +16,15 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "Tutorial Platform - Web3 Education",
-  description: "Learn and teach Web3 with TUT token rewards",
-  keywords: "Web3, blockchain, education, tutorials, cryptocurrency",
+  title: "Tutorial Platform - Solana Education",
+  description: "Learn and teach Solana with SOL rewards",
+  keywords: "Solana, blockchain, education, tutorials, cryptocurrency, Web3",
   authors: [{ name: "Tutorial Platform" }],
   viewport: "width=device-width, initial-scale=1",
   robots: "index, follow",
   openGraph: {
-    title: "Tutorial Platform - Web3 Education",
-    description: "Learn and teach Web3 with TUT token rewards",
+    title: "Tutorial Platform - Solana Education",
+    description: "Learn and teach Solana with SOL rewards",
     type: "website",
     images: [
       {
@@ -37,8 +37,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary",
-    title: "Tutorial Platform - Web3 Education",
-    description: "Learn and teach Web3 with TUT token rewards",
+    title: "Tutorial Platform - Solana Education",
+    description: "Learn and teach Solana with SOL rewards",
     images: ["/android-chrome-512x512.png"],
   },
   icons: {
@@ -100,7 +100,7 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          <Web3Provider>
+          <SolanaProvider>
             <div className="min-h-screen flex flex-col">
               <Navbar />
               <main className="flex-1">{children}</main>
@@ -108,7 +108,7 @@ export default function RootLayout({
             </div>
             <Toaster />
             <PerformanceMonitor />
-          </Web3Provider>
+          </SolanaProvider>
         </ThemeProvider>
       </body>
     </html>
