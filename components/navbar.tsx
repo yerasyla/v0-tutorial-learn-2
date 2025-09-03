@@ -20,7 +20,6 @@ const navigationItems = [
 const walletRequiredItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Create Course", href: "/create-course", icon: Plus },
-  { name: "Test Solana", href: "/test-solana", icon: Search },
 ]
 
 export default function Navbar() {
