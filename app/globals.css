@@ -34,63 +34,64 @@
     --brand-dark: 33 94% 13%; /* #281a02 */
   }
 
+  /* More specific dark theme selector with higher specificity */
+  html.dark,
   .dark {
     /* Dark theme colors based on Figma design */
-    --background: 0 0% 6.3%; /* #101014 */
-    --foreground: 0 0% 98%;
-    --card: 0 0% 9.8%; /* #18181b */
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 6.3%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 38 92% 50%;
-    --primary-foreground: 0 0% 6.3%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 27.5%; /* #71717a */
-    --input: 0 0% 14.9%;
-    --ring: 38 92% 50%;
+    --background: 0 0% 6.3% !important; /* #101014 */
+    --foreground: 0 0% 98% !important;
+    --card: 0 0% 9.8% !important; /* #18181b */
+    --card-foreground: 0 0% 98% !important;
+    --popover: 0 0% 6.3% !important;
+    --popover-foreground: 0 0% 98% !important;
+    --primary: 38 92% 50% !important;
+    --primary-foreground: 0 0% 6.3% !important;
+    --secondary: 0 0% 14.9% !important;
+    --secondary-foreground: 0 0% 98% !important;
+    --muted: 0 0% 14.9% !important;
+    --muted-foreground: 0 0% 63.9% !important;
+    --accent: 0 0% 14.9% !important;
+    --accent-foreground: 0 0% 98% !important;
+    --destructive: 0 62.8% 30.6% !important;
+    --destructive-foreground: 0 0% 98% !important;
+    --border: 0 0% 27.5% !important; /* #71717a */
+    --input: 0 0% 14.9% !important;
+    --ring: 38 92% 50% !important;
 
     /* Tutorial brand colors remain consistent */
-    --brand-primary: 38 92% 50%; /* #faa400 */
-    --brand-secondary: 39 96% 40%; /* #cb8b00 */
-    --brand-accent: 42 96% 89%; /* #ffcf65 */
-    --brand-light: 44 100% 94%; /* #fff9e6 */
-    --brand-dark: 33 94% 13%; /* #281a02 */
+    --brand-primary: 38 92% 50% !important; /* #faa400 */
+    --brand-secondary: 39 96% 40% !important; /* #cb8b00 */
+    --brand-accent: 42 96% 89% !important; /* #ffcf65 */
+    --brand-light: 44 100% 94% !important; /* #fff9e6 */
+    --brand-dark: 33 94% 13% !important; /* #281a02 */
   }
 
   * {
     border-color: hsl(var(--border));
   }
 
+  /* More specific body selector with higher specificity */
+  html body,
   body {
-    color: hsl(var(--foreground));
-    background: hsl(var(--background));
-    /* Ensure smooth transitions work in production */
-    transition: background-color 0.3s ease, color 0.3s ease;
+    color: hsl(var(--foreground)) !important;
+    background: hsl(var(--background)) !important;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
-  /* More specific transition rules for better production performance */
-  html {
-    transition: color-scheme 0.3s ease;
+  /* Ensure theme classes work with higher specificity */
+  html.light,
+  html.light body {
+    color-scheme: light !important;
   }
 
-  html.light {
-    color-scheme: light;
+  html.dark,
+  html.dark body {
+    color-scheme: dark !important;
   }
 
-  html.dark {
-    color-scheme: dark;
-  }
-
-  /* Smooth transitions for theme changes */
-  * {
-    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  /* Remove overly broad transitions that cause production issues */
+  .theme-transition {
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
   }
 }
 
