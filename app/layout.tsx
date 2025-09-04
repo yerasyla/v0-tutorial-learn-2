@@ -63,7 +63,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.className}>
+    <html lang="en" className={inter.className} suppressHydrationWarning>
       <head>
         {/* Primary favicon */}
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
@@ -98,7 +98,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://img.youtube.com" />
         <link rel="dns-prefetch" href="https://www.youtube.com" />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <ThemeProvider>
           <Web3Provider>
             <div className="min-h-screen flex flex-col">

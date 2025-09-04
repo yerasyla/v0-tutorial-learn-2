@@ -10,37 +10,52 @@ interface ThemeContextType {
   toggleTheme: () => void
   setTheme: (theme: Theme) => void
   isDark: boolean
+  isLoaded: boolean
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light")
+  const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
-    // Load theme from localStorage on mount
-    const savedTheme = localStorage.getItem("tutorial-theme") as Theme
-    if (savedTheme && (savedTheme === "light" || savedTheme === "dark")) {
-      setThemeState(savedTheme)
-    } else {
-      // Check system preference
-      const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-      setThemeState(systemPrefersDark ? "dark" : "light")
+    try {
+      const savedTheme = localStorage.getItem("tutorial-theme") as Theme
+      if (savedTheme && (savedTheme === "light" || savedTheme === "dark")) {
+        setThemeState(savedTheme)
+      } else {
+        // Check system preference safely
+        if (typeof window !== "undefined" && window.matchMedia) {
+          const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+          setThemeState(systemPrefersDark ? "dark" : "light")
+        }
+      }
+    } catch (error) {
+      console.warn("Could not access localStorage for theme:", error)
+      setThemeState("light")
     }
+    setIsLoaded(true)
   }, [])
 
   useEffect(() => {
-    // Save theme to localStorage and update document class
-    localStorage.setItem("tutorial-theme", theme)
+    if (!isLoaded) return
 
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark")
-      document.documentElement.classList.remove("light")
-    } else {
-      document.documentElement.classList.add("light")
-      document.documentElement.classList.remove("dark")
+    try {
+      localStorage.setItem("tutorial-theme", theme)
+    } catch (error) {
+      console.warn("Could not save theme to localStorage:", error)
     }
-  }, [theme])
+
+    const root = document.documentElement
+    if (theme === "dark") {
+      root.classList.add("dark")
+      root.classList.remove("light")
+    } else {
+      root.classList.add("light")
+      root.classList.remove("dark")
+    }
+  }, [theme, isLoaded])
 
   const toggleTheme = () => {
     setThemeState((prev) => (prev === "light" ? "dark" : "light"))
@@ -57,6 +72,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         toggleTheme,
         setTheme,
         isDark: theme === "dark",
+        isLoaded,
       }}
     >
       {children}
