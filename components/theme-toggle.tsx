@@ -7,6 +7,11 @@ import { Sun, Moon } from "@phosphor-icons/react"
 export function ThemeToggle() {
   const { theme, toggleTheme, isDark, isLoaded } = useTheme()
 
+  const handleToggle = () => {
+    console.log("[v0] Theme toggle clicked, current theme:", theme)
+    toggleTheme()
+  }
+
   if (!isLoaded) {
     return (
       <Button
@@ -22,7 +27,7 @@ export function ThemeToggle() {
 
   return (
     <Button
-      onClick={toggleTheme}
+      onClick={handleToggle}
       variant="ghost"
       size="sm"
       className="h-10 w-10 p-0 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
