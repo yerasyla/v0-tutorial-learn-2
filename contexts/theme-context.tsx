@@ -24,19 +24,37 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement
     const body = document.body
 
-    root.classList.remove("light", "dark")
-    body.classList.remove("light", "dark")
+    root.classList.remove("light", "dark", "force-light-theme", "force-dark-theme")
+    body.classList.remove("light", "dark", "force-light-theme", "force-dark-theme")
 
     // Force reflow to ensure classes are removed
     root.offsetHeight
 
-    // Add the new theme class to both html and body
-    root.classList.add(newTheme)
-    body.classList.add(newTheme)
+    root.classList.add(newTheme, `force-${newTheme}-theme`)
+    body.classList.add(newTheme, `force-${newTheme}-theme`)
+
+    if (newTheme === "dark") {
+      root.style.setProperty("--background", "0 0% 6.3%", "important")
+      root.style.setProperty("--foreground", "0 0% 98%", "important")
+      root.style.backgroundColor = "hsl(0 0% 6.3%)"
+      root.style.color = "hsl(0 0% 98%)"
+      body.style.backgroundColor = "hsl(0 0% 6.3%)"
+      body.style.color = "hsl(0 0% 98%)"
+    } else {
+      root.style.setProperty("--background", "0 0% 100%", "important")
+      root.style.setProperty("--foreground", "0 0% 3.9%", "important")
+      root.style.backgroundColor = "hsl(0 0% 100%)"
+      root.style.color = "hsl(0 0% 3.9%)"
+      body.style.backgroundColor = "hsl(0 0% 100%)"
+      body.style.color = "hsl(0 0% 3.9%)"
+    }
 
     // Set color scheme with higher specificity
     root.style.setProperty("color-scheme", newTheme, "important")
     body.style.setProperty("color-scheme", newTheme, "important")
+
+    root.setAttribute("data-theme", newTheme)
+    body.setAttribute("data-theme", newTheme)
 
     console.log("[v0] Theme applied, html classes:", root.className)
     console.log("[v0] Theme applied, body classes:", body.className)

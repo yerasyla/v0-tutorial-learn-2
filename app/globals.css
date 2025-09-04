@@ -34,10 +34,14 @@
     --brand-dark: 33 94% 13%; /* #281a02 */
   }
 
-  /* More specific dark theme selector with higher specificity */
+  /* Ultra-high specificity dark theme selectors to override any CSS-in-JS frameworks */
   html.dark,
-  .dark {
-    /* Dark theme colors based on Figma design */
+  html.dark *,
+  .dark,
+  .dark *,
+  [class*="dark"],
+  [class*="dark"] * {
+    /* Dark theme colors with maximum specificity */
     --background: 0 0% 6.3% !important; /* #101014 */
     --foreground: 0 0% 98% !important;
     --card: 0 0% 9.8% !important; /* #18181b */
@@ -57,41 +61,56 @@
     --border: 0 0% 27.5% !important; /* #71717a */
     --input: 0 0% 14.9% !important;
     --ring: 38 92% 50% !important;
+  }
 
-    /* Tutorial brand colors remain consistent */
-    --brand-primary: 38 92% 50% !important; /* #faa400 */
-    --brand-secondary: 39 96% 40% !important; /* #cb8b00 */
-    --brand-accent: 42 96% 89% !important; /* #ffcf65 */
-    --brand-light: 44 100% 94% !important; /* #fff9e6 */
-    --brand-dark: 33 94% 13% !important; /* #281a02 */
+  /* Force theme application with maximum specificity */
+  html.dark,
+  html.dark body,
+  html.dark main,
+  html.dark div,
+  .dark,
+  .dark body,
+  .dark main,
+  .dark div {
+    color-scheme: dark !important;
+    background-color: hsl(0 0% 6.3%) !important;
+    color: hsl(0 0% 98%) !important;
+  }
+
+  html.light,
+  html.light body,
+  html.light main,
+  html.light div,
+  .light,
+  .light body,
+  .light main,
+  .light div {
+    color-scheme: light !important;
+    background-color: hsl(0 0% 100%) !important;
+    color: hsl(0 0% 3.9%) !important;
+  }
+
+  /* Override any CSS-in-JS framework styles */
+  [class*="f_"] html.dark,
+  [class*="f_"].dark,
+  html[class*="f_"].dark {
+    background-color: hsl(0 0% 6.3%) !important;
+    color: hsl(0 0% 98%) !important;
+  }
+
+  [class*="f_"] html.light,
+  [class*="f_"].light,
+  html[class*="f_"].light {
+    background-color: hsl(0 0% 100%) !important;
+    color: hsl(0 0% 3.9%) !important;
   }
 
   * {
     border-color: hsl(var(--border));
   }
 
-  /* More specific body selector with higher specificity */
-  html body,
   body {
-    color: hsl(var(--foreground)) !important;
-    background: hsl(var(--background)) !important;
     transition: background-color 0.2s ease, color 0.2s ease;
-  }
-
-  /* Ensure theme classes work with higher specificity */
-  html.light,
-  html.light body {
-    color-scheme: light !important;
-  }
-
-  html.dark,
-  html.dark body {
-    color-scheme: dark !important;
-  }
-
-  /* Remove overly broad transitions that cause production issues */
-  .theme-transition {
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
   }
 }
 
@@ -108,5 +127,16 @@
   }
   .hover\:bg-brand-secondary:hover {
     background-color: hsl(var(--brand-secondary));
+  }
+
+  /* Force theme utilities with maximum specificity */
+  .force-dark-theme {
+    background-color: hsl(0 0% 6.3%) !important;
+    color: hsl(0 0% 98%) !important;
+  }
+
+  .force-light-theme {
+    background-color: hsl(0 0% 100%) !important;
+    color: hsl(0 0% 3.9%) !important;
   }
 }
